@@ -57,7 +57,7 @@
     </MASM>
   </ItemGroup>
   <ItemGroup>
-    <None Include="Shipyard.json">
+    <None Include="Shipworks.json">
       <Filter>Configuration</Filter>
     </None>
   </ItemGroup>

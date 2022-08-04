@@ -23,7 +23,7 @@ void Inject() {
     CreateLibraries();
 
     // FIX: This will crash if shipyard.json does not exist
-    std::ifstream f("Shipyard.json");
+    std::ifstream f("Shipworks.json");
     json data = json::parse(f);
 
     // TODO: Make it so that each category can individually disable it's vanilla parts
