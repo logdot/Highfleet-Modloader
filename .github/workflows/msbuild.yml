@@ -46,7 +46,7 @@ jobs:
       uses: actions/upload-artifact@v3.1.0
       with:
         name: Artifacts
-        path: Artifacts.zip
+        path: x64/Release/
         
     - name: Release
       if: startsWith(github.ref, 'refs/tags/')
