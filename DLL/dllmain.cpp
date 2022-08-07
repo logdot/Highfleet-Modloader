@@ -11,7 +11,7 @@
 
 using json = nlohmann::json;
 
-void LoadConfig(json data, const char* name, EditorLibraries library) {
+void __declspec(noinline) LoadConfig(json data, const char* name, EditorLibraries library) {
     for (std::string moid : data[name]) {
         // TODO: specify which library the part was loaded into
         std::cout << "Loading part: " << moid << std::endl;
@@ -45,6 +45,7 @@ void Inject() {
     LoadConfig(data, "Defences", DefencesLibrary);
     LoadConfig(data, "Generators", GeneratorLibrary);
     LoadConfig(data, "Quarters", QuartersLibrary);
+    LoadConfig(data, "Emergency", EmergencyLibrary);
 }
 
 DWORD WINAPI HackThread(HMODULE hModule) {
