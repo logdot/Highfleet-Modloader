@@ -1,44 +1,58 @@
 {
 	"LoadVanilla": true,
+	"LoadVanillaHulls": true,
 	"Hulls": [
 
 	],
+	"LoadVanillaArmors": true,
 	"Armors": [
 
 	],
+	"LoadVanillaFuels":  true,
 	"Fuels": [
 
 	],
+	"LoadVanillaAmmos": true,
 	"Ammos": [
 
 	],
+	"LoadVanillaLegs": true,
 	"Legs": [
 
 	],
+	"LoadVanillaEngines": true,
 	"Engines": [
 
 	],
+	"LoadVanillaGuns": true,
 	"Guns": [
 
 	],
+	"LoadVanillaSensors": true,
 	"Sensors": [
 
 	],
+	"LoadVanillaExpendables": true,
 	"Expendables": [
 
 	],
+	"LoadVanillaCrafts": true,
 	"Crafts": [
 
 	],
+	"LoadVanillaDefences": true,
 	"Defences": [
 
 	],
+	"LoadVanillaGenerators": true,
 	"Generators": [
 
 	],
+	"LoadVanillaQuarters": true,
 	"Quarters": [
 
 	],
+	"LoadVanillaEmergency": true,
 	"Emergency": [
 
 	]

@@ -28,4 +28,20 @@ extern "C" {
 }
 
 void CreateLibraries();
+
+void DefineVanillaHulls();
+void DefineVanillaArmor();
+void DefineVanillaFuel();
+void DefineVanillaAmmo();
+void DefineVanillaLegs();
+void DefineVanillaEngines();
+void DefineVanillaGuns();
+void DefineVanillaSensors();
+void DefineVanillaExpendables();
+void DefineVanillaCrafts();
+void DefineVanillaDefences();
+void DefineVanillaGenerators();
+void DefineVanillaQuarters();
+void DefineVanillaEmergencies();
+
 void DefineVanillaParts();
