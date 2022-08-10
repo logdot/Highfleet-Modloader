@@ -51,10 +51,6 @@ void Inject()
             DefineVanillaGuns();
         if (data["LoadVanillaSensors"] == true)
             DefineVanillaSensors();
-        if (data["LoadVanillaGuns"] == true)
-            DefineVanillaGuns();
-        if (data["LoadVanillaSensors"] == true)
-            DefineVanillaSensors();
         if (data["LoadVanillaExpendables"] == true)
             DefineVanillaExpendables();
         if (data["LoadVanillaCrafts"] == true)
