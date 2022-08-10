@@ -9,5 +9,5 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG ${CMAKE_RUNTIME_OUTPUT_DIRECTORY})
 
 project(HighfleetMoadloader VERSION 0.1.1)
 
-add_subdirectory(DLL)
-add_subdirectory("Highfleet Modloader")
+add_subdirectory(ShipworksExtended)
+add_subdirectory(HighfleetModloader)
