@@ -12,7 +12,7 @@ int main(int argc, char* argv[]) {
 	PROCESS_INFORMATION pi;
 
 	const char* gameName = "Highfleet.exe";
-	const char* injectLibraryPath = "DLL.dll";
+	const char* injectLibraryPath = "ShipworksExtended.dll";
 	const char* windowName = "HIGHFLEET v.1.151";
 
 	const DWORD exitTime = 10000;
