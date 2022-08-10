@@ -26,27 +26,28 @@ jobs:
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v1.0.2
 
-    - name: Restore NuGet packages
-      working-directory: ${{env.GITHUB_WORKSPACE}}
-      run: nuget restore ${{env.SOLUTION_FILE_PATH}}
+    - run: mkdir build
 
     - name: Build
-      working-directory: ${{env.GITHUB_WORKSPACE}}
-      # Add additional options to the MSBuild command line here (like platform or verbosity level).
-      # See https://docs.microsoft.com/visualstudio/msbuild/msbuild-command-line-reference
-      run: msbuild /m /p:Configuration=${{env.BUILD_CONFIGURATION}} /p:DebugType=None ${{env.SOLUTION_FILE_PATH}}
+      working-directory: ${{env.GITHUB_WORKSPACE}}/build
+      run: |
+        cmake ..
+        cmake --build . --config ${{env.BUILD_CONFIGURATION}}
       
     - name: Zip
       uses: vimtor/action-zip@v1
       with:
-        files: x64/Release/
+        files: build/bin/Release/ build/bin/Shipworks.json
+        recursive: false
         dest: Artifacts.zip
         
     - name: Upload
       uses: actions/upload-artifact@v3.1.0
       with:
         name: Artifacts
-        path: x64/Release/
+        path: |
+          build/bin/Release/
+          build/bin/Shipworks.json
         
     - name: Release
       if: startsWith(github.ref, 'refs/tags/')
