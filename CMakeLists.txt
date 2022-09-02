@@ -6,7 +6,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-set(SOURCE src/Main.cpp)
+set(SOURCE src/Main.cpp src/Inject.cpp)
 
-project(HighfleetMoadloader VERSION 0.1.1)
+project(HighfleetModloader VERSION 0.1.1)
 add_executable(${PROJECT_NAME} ${SOURCE})
