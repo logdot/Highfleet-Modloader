@@ -1,66 +1,30 @@
 # Highfleet-Modloader
-This is a simple modloader for the game Highfleet
+This is a simple modloader for the game Highfleet.
+It can load any DLL into the game, making it very flexible.
 
-## Using
-Simply go to the [latest release](https://github.com/logdot/Highfleet-Modloader/releases/latest)
-and download Artifacts.zip, then simply extract into your highfleet folder. Now
-run `Highfleet Modloader.exe` to launch your game with mods.
+## Instalation
+The installation process is very simple:
+- Go to the [latest release](https://github.com/logdot/Highfleet-Modloader/releases/latest)
+- Download Artifacts.zip
+- Run `HighfleetModloader.exe` once to have it create it's necessary folders
 
-## Adding parts
-Adding parts is really simple, simply add the m_oid of your part into the
-Shipworks.json file. You can even edit this file while the game is running and
-it will be applied the next time you open the Shipworks.
-Here is an example Shipworks.json:
+## Adding Mods
+To add a mod all you have to do is drag and drop it into the `Modloader/mods` folder
+and any of the mod's configuration files into `Modloader/config`.
 
-```json
-{
-	"LoadVanilla": true,
-	"Hulls": [
-		"HULL2x2_1",
-		"HULL3x3_1"	
-	],
-	"Armors": [
+## Developing mods
+Thanks to the nature of the modloader you can develop almost any DLL and it will be injected
+into the game. This means you have almost absolute control over the game.
 
-	],
-	"Fuels": [
+Currently there isn't much to guide you into developing your own mod, apart from looking
+at the source code of another existing mod. Eventually a guide for creating your own
+mods is going to be created, but it's not currently available.
+Additionally I plan on making a library for mod development that should greatly
+ease the development process.
 
-	],
-	"Ammos": [
+## Available mods
+As of right now there is only
+- [ShipworksExtended](https://github.com/logdot/ShipworksExtended)
+developed by me.
 
-	],
-	"Legs": [
-
-	],
-	"Engines": [
-		"MDL_ENGINE_5"
-	],
-	"Guns": [
-
-	],
-	"Sensors": [
-
-	],
-	"Expendables": [
-
-	],
-	"Crafts": [
-		"Custom_Craft_01",
-		"Custom_Craft_02",
-		"Custom_Craft_03"
-	],
-	"Defences": [
-
-	],
-	"Generators": [
-
-	],
-	"Quarters": [
-
-	]
-}
-```
-
-## Caveats
-Please make that all parts that you define inside of Shipworks.json exist in
-OL.seria and parts.seria, otherwise your game will crash upon entering the
-Shipworks
+If you create a mod message me and I'll add you to this list
