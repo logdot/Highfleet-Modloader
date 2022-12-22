@@ -1,9 +1,19 @@
 #include <Windows.h>
 #include <iostream>
 #include <filesystem>
+#include <fstream>
 #include "Inject.h"
 
 namespace fs = std::filesystem;
+
+std::string GetWindowNameFromFile(std::string path) {
+    std::ifstream infile(path);
+
+    std::string windowName;
+    std::getline(infile, windowName);
+
+    return windowName;
+}
 
 void VerifyModFolders()
 {
@@ -49,8 +59,16 @@ int main(int argc, char *argv[])
 	std::cout << "Waiting " << WAIT_TIME / 1000 << " seconds" << std::endl;
 	Sleep(WAIT_TIME);
 
-	std::cout << "Trying to get game process" << std::endl;
-	HANDLE ph = GetGameProcess("HIGHFLEET v.1.163");
+    std::string windowName = GetWindowNameFromFile("Modloader\\window_name.txt");
+    if (windowName.empty())
+    {
+        std::cout << "Failed to find window name. Does the file '.\\Modloader\\window_name.txt' with a proper window name exist?";
+        Sleep(EXIT_TIME);
+        return -1;
+    }
+
+	std::cout << "Trying to get game process of " << windowName << std::endl;
+	HANDLE ph = GetGameProcess(windowName.c_str());
 	if (ph == NULL)
 	{
 		std::cout << "Failed to get game process, error: " << GetLastError() << std::endl;
