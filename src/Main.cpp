@@ -2,6 +2,7 @@
 #include <iostream>
 #include <filesystem>
 #include <fstream>
+#include <string>
 #include "Inject.h"
 
 namespace fs = std::filesystem;
