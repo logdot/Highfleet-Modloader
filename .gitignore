@@ -399,3 +399,6 @@ FodyWeavers.xsd
 *.sln.iml
 
 CMakeSettings.json
+
+cmake-build-*/
+.idea/
