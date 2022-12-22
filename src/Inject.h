@@ -5,7 +5,7 @@
 const DWORD EXIT_TIME = 10000;
 const DWORD WAIT_TIME = 10000;
 
-DWORD GetProcessByWindowName(LPCSTR windowName);
+DWORD GetPidByWindowName(LPCSTR windowName);
 HANDLE GetGameProcess(LPCSTR windowName);
 DWORD LaunchGame();
 DWORD LaunchGame(LPCSTR gameName);

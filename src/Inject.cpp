@@ -1,6 +1,6 @@
 #include "Inject.h"
 
-DWORD GetProcessByWindowName(LPCSTR windowName)
+DWORD GetPidByWindowName(LPCSTR windowName)
 {
     DWORD PID;
     GetWindowThreadProcessId(FindWindow(NULL, windowName), &PID); // getting the PID from a window handle
@@ -29,7 +29,7 @@ DWORD LaunchGame(LPCSTR gameName)
 
 HANDLE GetGameProcess(LPCSTR windowName)
 {
-    DWORD PID = GetProcessByWindowName(windowName);
+    DWORD PID = GetPidByWindowName(windowName);
     HANDLE ph = OpenProcess(PROCESS_CREATE_THREAD | PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ, false, PID);
 
     return ph;
