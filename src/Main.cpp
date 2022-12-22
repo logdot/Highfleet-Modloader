@@ -50,7 +50,7 @@ int main(int argc, char *argv[])
 	Sleep(WAIT_TIME);
 
 	std::cout << "Trying to get game process" << std::endl;
-	HANDLE ph = GetGameProcess();
+	HANDLE ph = GetGameProcess("HIGHFLEET v.1.163");
 	if (ph == NULL)
 	{
 		std::cout << "Failed to get game process, error: " << GetLastError() << std::endl;

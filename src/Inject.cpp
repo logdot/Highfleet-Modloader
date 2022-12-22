@@ -27,9 +27,9 @@ DWORD LaunchGame(LPCSTR gameName)
     return createSuccess;
 }
 
-HANDLE GetGameProcess()
+HANDLE GetGameProcess(LPCSTR windowName)
 {
-    DWORD PID = GetProcessByWindowName(WINDOW_NAME);
+    DWORD PID = GetProcessByWindowName(windowName);
     HANDLE ph = OpenProcess(PROCESS_CREATE_THREAD | PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ, false, PID);
 
     return ph;
