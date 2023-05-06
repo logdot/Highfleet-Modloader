@@ -11,3 +11,4 @@ cmake_policy(SET CMP0076 NEW)
 project(HighfleetModloader VERSION 0.1.1)
 
 add_subdirectory(Injector)
+add_subdirectory(Loader)
