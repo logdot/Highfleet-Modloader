@@ -7,12 +7,12 @@ DWORD GetPidByWindowName(LPCSTR windowName)
     return PID;
 }
 
-DWORD LaunchGame()
+bool LaunchGame()
 {
     return LaunchGame("Highfleet.exe");
 }
 
-DWORD LaunchGame(LPCSTR gameName)
+bool LaunchGame(LPCSTR gameName)
 {
     STARTUPINFO si;
     PROCESS_INFORMATION pi;
@@ -21,10 +21,11 @@ DWORD LaunchGame(LPCSTR gameName)
     si.cb = sizeof(si);
     ZeroMemory(&pi, sizeof(pi));
 
-    bool createSuccess = false;
-    createSuccess = CreateProcess(gameName, NULL, NULL, NULL, FALSE, NULL, NULL, NULL, &si, &pi);
-
-    return createSuccess;
+    DWORD createSuccess = CreateProcess(gameName, NULL, NULL, NULL, FALSE, NULL, NULL, NULL, &si, &pi);
+    if (createSuccess == 0)
+        return false;
+    else
+        return true;
 }
 
 HANDLE GetGameProcess(LPCSTR windowName)
@@ -35,20 +36,20 @@ HANDLE GetGameProcess(LPCSTR windowName)
     return ph;
 }
 
-DWORD InjectLibrary(LPCSTR libraryPath, HANDLE processHandle)
+bool InjectLibrary(LPCSTR libraryPath, HANDLE processHandle)
 {
     LPVOID remoteBuffer = (LPVOID)VirtualAllocEx(processHandle, NULL, strlen(libraryPath), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
     if (remoteBuffer == NULL)
-        return -1;
+        return false;
 
     BOOL writeError = WriteProcessMemory(processHandle, remoteBuffer, libraryPath, strlen(libraryPath), NULL);
     if (writeError == 0)
-        return -1;
+        return false;
 
     LPTHREAD_START_ROUTINE addr = (LPTHREAD_START_ROUTINE)GetProcAddress(GetModuleHandleW(L"Kernel32.dll"), "LoadLibraryA");
     HANDLE remoteThreadHandle = CreateRemoteThread(processHandle, NULL, 0, addr, remoteBuffer, 0, NULL);
     if (remoteThreadHandle == NULL)
-        return -1;
+        return false;
 
-    return 1;
+    return true;
 }
