@@ -5,6 +5,18 @@
 #include <string>
 #include "Inject.h"
 
+struct SharedData
+{
+    DWORD dwOffset = 0;
+    HMODULE hModule = nullptr;
+    LPDWORD lpInit = nullptr;
+};
+
+#define DLL_REMOTEINIT_FUNCNAME "RemoteInit"
+#define SHMEMSIZE sizeof(SharedData)
+// Name of the shared file map (NOTE: Global namespaces must have the SeCreateGlobalPrivilege privilege)
+#define SHMEMNAME "Global\\InjectedDllName_SHMEM"
+
 namespace fs = std::filesystem;
 
 std::string GetWindowNameFromFile(std::string path) {
@@ -77,21 +89,47 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
-	for (const auto &modEntry : fs::directory_iterator("Modloader/mods"))
-	{
-		std::cout << "Attempting to load mod at: " << modEntry.path() << std::endl;
-		std::cout << (modEntry.path().string().c_str()) << std::endl;
-		bool injectSuccess = InjectLibrary((modEntry.path().string().c_str()), ph);
+    std::cout << "Trying to inject modloader." << std::endl;
+    bool injectSuccess = InjectLibrary(".\\Modloader.dll", ph);
+    if (!injectSuccess)
+        std::cout << "Failed to inject modloader." << std::endl;
+    else
+        std::cout << "Injected modloader." << std::endl;
 
-		if (!injectSuccess)
-		{
-			std::cout << "Failed to load mod, error: " << GetLastError() << std::endl;
-			Sleep(EXIT_TIME);
-			return -1;
-		}
-	}
+    std::cout << "Sleeping" << std::endl;
+    Sleep(500);
 
-	std::cout << "Finished loading all mods :)" << std::endl;
+    HANDLE hMapFile = CreateFileMappingA(INVALID_HANDLE_VALUE, nullptr, PAGE_READWRITE, 0, SHMEMSIZE, SHMEMNAME);
+    if (hMapFile == nullptr) {
+        std::cout << "Failed to create file mapping, error: " << GetLastError() << std::endl;
+        Sleep(EXIT_TIME);
+        return -1;
+    }
+
+    LPVOID lpMemFile = MapViewOfFile(hMapFile, FILE_MAP_ALL_ACCESS, 0, 0, 0);
+    if (lpMemFile == nullptr) {
+        std::cout << "Failed to map shared memory, error: " << GetLastError() << std::endl;
+        Sleep(EXIT_TIME);
+        return -1;
+    }
+
+    SharedData data;
+    memcpy(&data, lpMemFile, SHMEMSIZE);
+
+    UnmapViewOfFile(lpMemFile);
+    CloseHandle(hMapFile);
+
+    std::cout << "Calling init on loader." << std::endl;
+
+    DWORD dwThreadId = 0;
+    auto handle = CreateRemoteThread(ph, nullptr, 0, LPTHREAD_START_ROUTINE(data.lpInit), nullptr, 0, &dwThreadId);
+
+    if (handle == nullptr)
+        std::cout << "Failed to call init on loader." << std::endl;
+    else
+        std::cout << "Successfully called init on loader." << std::endl;
+
+	std::cout << "Finished injecting loader :)" << std::endl;
 
 	Sleep(EXIT_TIME);
 	return 0;
