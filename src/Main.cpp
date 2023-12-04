@@ -70,6 +70,7 @@ int main(int argc, char *argv[])
 	}
 
 	std::cout << "Trying to get game process of " << windowName << std::endl;
+	std::cout << "Current error code: " << GetLastError() << std::endl;
 	HANDLE ph = GetGameProcess(windowName.c_str());
 	if (ph == NULL)
 	{
