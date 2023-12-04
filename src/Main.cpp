@@ -7,13 +7,14 @@
 
 namespace fs = std::filesystem;
 
-std::string GetWindowNameFromFile(std::string path) {
-    std::ifstream infile(path);
+std::string GetWindowNameFromFile(std::string path)
+{
+	std::ifstream infile(path);
 
-    std::string windowName;
-    std::getline(infile, windowName);
+	std::string windowName;
+	std::getline(infile, windowName);
 
-    return windowName;
+	return windowName;
 }
 
 void VerifyModFolders()
@@ -60,13 +61,13 @@ int main(int argc, char *argv[])
 	std::cout << "Waiting " << WAIT_TIME / 1000 << " seconds" << std::endl;
 	Sleep(WAIT_TIME);
 
-    std::string windowName = GetWindowNameFromFile("Modloader\\window_name.txt");
-    if (windowName.empty())
-    {
-        std::cout << "Failed to find window name. Does the file '.\\Modloader\\window_name.txt' with a proper window name exist?";
-        Sleep(EXIT_TIME);
-        return -1;
-    }
+	std::string windowName = GetWindowNameFromFile("Modloader\\window_name.txt");
+	if (windowName.empty())
+	{
+		std::cout << "Failed to find window name. Does the file '.\\Modloader\\window_name.txt' with a proper window name exist?";
+		Sleep(EXIT_TIME);
+		return -1;
+	}
 
 	std::cout << "Trying to get game process of " << windowName << std::endl;
 	HANDLE ph = GetGameProcess(windowName.c_str());
