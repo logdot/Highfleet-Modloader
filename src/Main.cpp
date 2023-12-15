@@ -68,7 +68,7 @@ int main(int argc, char *argv[])
 	if (!launchSuccess)
 	{
 		std::cout << "Launching game failed, error: " << GetLastErrorString() << std::endl;
-		Sleep(EXIT_TIME);
+		system("pause");
 		return -1;
 	}
 
@@ -80,7 +80,7 @@ int main(int argc, char *argv[])
 	if (windowName.empty())
 	{
 		std::cout << "Failed to find window name. Does the file '.\\Modloader\\window_name.txt' with a proper window name exist?";
-		Sleep(EXIT_TIME);
+		system("pause");
 		return -1;
 	}
 
@@ -102,7 +102,7 @@ int main(int argc, char *argv[])
 	if (ph == NULL)
 	{
 		std::cout << "Failed to get game process, error: " << GetLastErrorString() << std::endl;
-		Sleep(EXIT_TIME);
+		system("pause");
 		return -1;
 	}
 
@@ -115,13 +115,13 @@ int main(int argc, char *argv[])
 		if (!injectSuccess)
 		{
 			std::cout << "Failed to load mod, error: " << GetLastErrorString() << std::endl;
-			Sleep(EXIT_TIME);
+			system("pause");
 			return -1;
 		}
 	}
 
 	std::cout << "Finished loading all mods :)" << std::endl;
 
-	Sleep(EXIT_TIME);
+	system("pause");
 	return 0;
 }

@@ -2,7 +2,6 @@
 
 #include <Windows.h>
 
-const DWORD EXIT_TIME = 50000;
 const DWORD WAIT_TIME = 1000;
 
 DWORD GetPidByWindowName(LPCSTR windowName);
