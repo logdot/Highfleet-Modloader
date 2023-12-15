@@ -41,6 +41,21 @@ void VerifyModFolders()
 	}
 }
 
+std::string GetLastErrorString()
+{
+	DWORD errorCode = GetLastError();
+
+	LPSTR messageBuffer = nullptr;
+	size_t size = FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+								 NULL, errorCode, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPSTR)&messageBuffer, 0, NULL);
+
+	std::string message(messageBuffer, size);
+
+	LocalFree(messageBuffer);
+
+	return message;
+}
+
 int main(int argc, char *argv[])
 {
 	VerifyModFolders();
@@ -52,7 +67,7 @@ int main(int argc, char *argv[])
 
 	if (!launchSuccess)
 	{
-		std::cout << "Launching game failed, error: " << GetLastError() << std::endl;
+		std::cout << "Launching game failed, error: " << GetLastErrorString() << std::endl;
 		Sleep(EXIT_TIME);
 		return -1;
 	}
@@ -70,11 +85,11 @@ int main(int argc, char *argv[])
 	}
 
 	std::cout << "Trying to get game process of " << windowName << std::endl;
-	std::cout << "Current error code: " << GetLastError() << std::endl;
+	std::cout << "Current error code: " << GetLastErrorString() << std::endl;
 	HANDLE ph = GetGameProcess(windowName.c_str());
 	if (ph == NULL)
 	{
-		std::cout << "Failed to get game process, error: " << GetLastError() << std::endl;
+		std::cout << "Failed to get game process, error: " << GetLastErrorString() << std::endl;
 		Sleep(EXIT_TIME);
 		return -1;
 	}
@@ -87,7 +102,7 @@ int main(int argc, char *argv[])
 
 		if (!injectSuccess)
 		{
-			std::cout << "Failed to load mod, error: " << GetLastError() << std::endl;
+			std::cout << "Failed to load mod, error: " << GetLastErrorString() << std::endl;
 			Sleep(EXIT_TIME);
 			return -1;
 		}
