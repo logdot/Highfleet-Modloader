@@ -85,8 +85,20 @@ int main(int argc, char *argv[])
 	}
 
 	std::cout << "Trying to get game process of " << windowName << std::endl;
-	std::cout << "Current error code: " << GetLastErrorString() << std::endl;
-	HANDLE ph = GetGameProcess(windowName.c_str());
+
+	HANDLE ph = NULL;
+	for (int i = 0; i < 20; i++)
+	{
+		std::cout << "Attempt " << i + 1 << std::endl;
+		ph = GetGameProcess(windowName.c_str());
+		if (ph != NULL)
+		{
+			std::cout << "Found game process" << std::endl;
+			break;
+		}
+		Sleep(1000);
+	}
+
 	if (ph == NULL)
 	{
 		std::cout << "Failed to get game process, error: " << GetLastErrorString() << std::endl;
