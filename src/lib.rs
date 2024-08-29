@@ -10,7 +10,7 @@ mod loader;
 
 #[allow(unused_imports)]
 pub use intercepted_exports::*;
-use loader::load_mods;
+use loader::{create_folders, load_mods};
 pub use proxied_exports::*;
 
 use export_indices::TOTAL_EXPORTS;
@@ -20,6 +20,7 @@ use std::arch::x86_64::_mm_pause;
 #[cfg(target_arch="x86")]
 use std::arch::x86::_mm_pause;
 use std::ffi::OsString;
+use std::fs::create_dir_all;
 use std::os::windows::prelude::{AsRawHandle, OsStringExt};
 use winapi::ctypes::c_void;
 use winapi::shared::minwindef::{FARPROC, HMODULE};
@@ -160,6 +161,7 @@ unsafe extern "system" fn init(_: *mut c_void) -> u32 {
     load_dll_funcs();
     PROXYGEN_READY = true;
 
+    create_folders();
     load_mods();
 
     0

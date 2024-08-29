@@ -6,6 +6,20 @@ use log::{warn, error};
 const MOD_FOLDER: &str = "./Modloader/mods";
 const CONFIG_FOLDER: &str = "./Modloader/config";
 
+pub fn create_folders() {
+    if !PathBuf::from(MOD_FOLDER).exists() {
+        fs::create_dir_all(MOD_FOLDER).unwrap_or_else(|e| {
+            error!("Failed to create mods folder: {}", e);
+        });
+    }
+
+    if !PathBuf::from(CONFIG_FOLDER).exists() {
+        fs::create_dir_all(CONFIG_FOLDER).unwrap_or_else(|e| {
+            error!("Failed to create config folder: {}", e);
+        });
+    }
+}
+
 fn find_mods() -> std::io::Result<Vec<PathBuf>> {
     let folder = fs::read_dir(MOD_FOLDER)?;
 
