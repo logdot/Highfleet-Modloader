@@ -164,16 +164,18 @@ unsafe extern "system" fn init(_: *mut c_void) -> u32 {
 
     create_folders();
 
-    match get_version() {
+    let version = match get_version() {
         Ok(string) => {
             println!("Highfleet version: {string}");
+            string
         }
         Err(e) => {
             eprintln!("Error fetching version: {e}");
+            "Unknown".to_string()
         }
-    }
+    };
 
-    load_mods();
+    load_mods(version);
 
     0
 }
