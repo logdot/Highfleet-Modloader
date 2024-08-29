@@ -1,3 +1,16 @@
+# 3.0
+Full overhaul of the modloader.
+
+The following changes are planned:
+[] Changing from C++ to Rust.
+[] Using DLL proxying.
+[] Better integration with mods
+[] Version handling
+
+The most noticable change from a user's perspective is that they do not need to run a separate executable.
+They will just need to launch the game, which itself will load the proxied DLL without us having to do anything on our end.
+This hopefully will also stop AVs from flagging the modloader.
+
 # Highfleet-Modloader
 This is a simple modloader for the game Highfleet.
 It can load any DLL into the game, making it very flexible.
