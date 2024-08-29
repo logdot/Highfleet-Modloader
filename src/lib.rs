@@ -9,6 +9,7 @@ mod proxied_exports;
 mod loader;
 mod versioning;
 
+use flexi_logger::{Duplicate, FileSpec, Logger, WriteMode};
 #[allow(unused_imports)]
 pub use intercepted_exports::*;
 use loader::{create_folders, load_mods};
@@ -130,6 +131,16 @@ unsafe extern "system" fn init(_: *mut c_void) -> u32 {
     let err_handle = stderr.as_raw_handle();
     let err_handle = err_handle as *mut c_void;
     SetStdHandle(STD_ERROR_HANDLE, err_handle);
+
+    // Start logger
+    Logger::try_with_env_or_str("info").expect("Failed configuring logger")
+        .log_to_file(FileSpec::default())
+        .write_mode(WriteMode::BufferAndFlush)
+        .duplicate_to_stderr(Duplicate::Info)
+        .start()
+        .expect("Failed to start logger");
+
+
     if let Some(dll_path) = get_dll_path() {
         println!("This DLL path: {}", &dll_path);
         let orig_dll_name = format!("{}_\0", &dll_path);
