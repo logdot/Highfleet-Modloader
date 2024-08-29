@@ -1,0 +1,26 @@
+[package]
+name = "highfleet-loader"
+version = "0.1.0"
+edition = "2021"
+# build = "build.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+proxygen-macros = "0.5.1"
+libc = "0.2.149"
+winapi = { version = "0.3.9", features = [
+    "minwindef",
+    "libloaderapi",
+    "processthreadsapi",
+    "consoleapi",
+    "processenv",
+    "winbase",
+    "winuser",
+    "errhandlingapi",
+] }
+
+
+[lib]
+name = "bass"
+crate-type = ["cdylib"]
