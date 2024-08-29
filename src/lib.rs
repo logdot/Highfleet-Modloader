@@ -7,6 +7,7 @@ mod intercepted_exports;
 mod orig_exports;
 mod proxied_exports;
 mod loader;
+mod versioning;
 
 #[allow(unused_imports)]
 pub use intercepted_exports::*;
@@ -15,12 +16,12 @@ pub use proxied_exports::*;
 
 use export_indices::TOTAL_EXPORTS;
 use orig_exports::load_dll_funcs;
+use versioning::get_version;
 #[cfg(target_arch="x86_64")]
 use std::arch::x86_64::_mm_pause;
 #[cfg(target_arch="x86")]
 use std::arch::x86::_mm_pause;
 use std::ffi::OsString;
-use std::fs::create_dir_all;
 use std::os::windows::prelude::{AsRawHandle, OsStringExt};
 use winapi::ctypes::c_void;
 use winapi::shared::minwindef::{FARPROC, HMODULE};
@@ -162,6 +163,16 @@ unsafe extern "system" fn init(_: *mut c_void) -> u32 {
     PROXYGEN_READY = true;
 
     create_folders();
+
+    match get_version() {
+        Ok(string) => {
+            println!("Highfleet version: {string}");
+        }
+        Err(e) => {
+            eprintln!("Error fetching version: {e}");
+        }
+    }
+
     load_mods();
 
     0
