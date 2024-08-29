@@ -6,9 +6,11 @@ mod export_indices;
 mod intercepted_exports;
 mod orig_exports;
 mod proxied_exports;
+mod loader;
 
 #[allow(unused_imports)]
 pub use intercepted_exports::*;
+use loader::load_mods;
 pub use proxied_exports::*;
 
 use export_indices::TOTAL_EXPORTS;
@@ -157,6 +159,9 @@ unsafe extern "system" fn init(_: *mut c_void) -> u32 {
     }
     load_dll_funcs();
     PROXYGEN_READY = true;
+
+    load_mods();
+
     0
 }
 
