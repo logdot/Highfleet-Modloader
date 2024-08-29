@@ -6,13 +6,18 @@ mod export_indices;
 mod intercepted_exports;
 mod orig_exports;
 mod proxied_exports;
+mod loader;
+mod versioning;
 
+use flexi_logger::{Duplicate, FileSpec, Logger, WriteMode};
 #[allow(unused_imports)]
 pub use intercepted_exports::*;
+use loader::{create_folders, load_mods};
 pub use proxied_exports::*;
 
 use export_indices::TOTAL_EXPORTS;
 use orig_exports::load_dll_funcs;
+use versioning::get_version;
 #[cfg(target_arch="x86_64")]
 use std::arch::x86_64::_mm_pause;
 #[cfg(target_arch="x86")]
@@ -126,6 +131,16 @@ unsafe extern "system" fn init(_: *mut c_void) -> u32 {
     let err_handle = stderr.as_raw_handle();
     let err_handle = err_handle as *mut c_void;
     SetStdHandle(STD_ERROR_HANDLE, err_handle);
+
+    // Start logger
+    Logger::try_with_env_or_str("info").expect("Failed configuring logger")
+        .log_to_file(FileSpec::default())
+        .write_mode(WriteMode::BufferAndFlush)
+        .duplicate_to_stderr(Duplicate::Info)
+        .start()
+        .expect("Failed to start logger");
+
+
     if let Some(dll_path) = get_dll_path() {
         println!("This DLL path: {}", &dll_path);
         let orig_dll_name = format!("{}_\0", &dll_path);
@@ -157,6 +172,22 @@ unsafe extern "system" fn init(_: *mut c_void) -> u32 {
     }
     load_dll_funcs();
     PROXYGEN_READY = true;
+
+    create_folders();
+
+    let version = match get_version() {
+        Ok(string) => {
+            println!("Highfleet version: {string}");
+            string
+        }
+        Err(e) => {
+            eprintln!("Error fetching version: {e}");
+            "Unknown".to_string()
+        }
+    };
+
+    load_mods(version);
+
     0
 }
 
