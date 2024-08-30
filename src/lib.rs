@@ -13,6 +13,7 @@ use flexi_logger::{Duplicate, FileSpec, Logger, WriteMode};
 #[allow(unused_imports)]
 pub use intercepted_exports::*;
 use loader::{create_folders, load_mods};
+use log::{debug, error, info, warn};
 pub use proxied_exports::*;
 
 use export_indices::TOTAL_EXPORTS;
@@ -142,32 +143,23 @@ unsafe extern "system" fn init(_: *mut c_void) -> u32 {
 
 
     if let Some(dll_path) = get_dll_path() {
-        println!("This DLL path: {}", &dll_path);
+        info!("This DLL path: {}", &dll_path);
         let orig_dll_name = format!("{}_\0", &dll_path);
         ORIG_DLL_HANDLE = Some(LoadLibraryA(orig_dll_name.as_ptr() as *const i8));
     } else {
-        show_message("HIGHFLEET-LOADER", "Failed to get DLL path");
-        eprint!("Failed to get DLL path");
+        error!("Failed to get DLL path");
         return 1;
     }
     if let Some(orig_dll_handle) = ORIG_DLL_HANDLE {
         if orig_dll_handle.is_null() {
             let err = GetLastError();
-            eprintln!("Failed to load original DLL");
-            show_message(
-                "HIGHFLEET-LOADER",
-                &format!("Failed to load original DLL. Error: {}", err),
-            );
+            error!("Failed to load original DLL");
             die();
         }
-        println!("Original DLL handle: {:?}", orig_dll_handle);
+        debug!("Original DLL handle: {:?}", orig_dll_handle);
     } else {
         let err = GetLastError();
-        eprintln!("Failed to load original DLL");
-        show_message(
-            "HIGHFLEET-LOADER",
-            &format!("Failed to load original DLL. Error: {}", err),
-        );
+        error!("Failed to load original DLL: {err}");
         die();
     }
     load_dll_funcs();
@@ -177,11 +169,11 @@ unsafe extern "system" fn init(_: *mut c_void) -> u32 {
 
     let version = match get_version() {
         Ok(string) => {
-            println!("Highfleet version: {string}");
+            info!("Highfleet version: {string}");
             string
         }
         Err(e) => {
-            eprintln!("Error fetching version: {e}");
+            warn!("Error fetching version: {e}");
             "Unknown".to_string()
         }
     };
