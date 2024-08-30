@@ -178,7 +178,7 @@ unsafe extern "system" fn init(_: *mut c_void) -> u32 {
         }
     };
 
-    load_mods(version);
+    load_mods(&version);
 
     0
 }

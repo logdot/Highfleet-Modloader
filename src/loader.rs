@@ -1,4 +1,4 @@
-use std::{fs, path::PathBuf};
+use std::{ffi::CString, fs, os::raw::c_char, path::PathBuf};
 
 use libloading::Library;
 use log::{debug, error, info, warn, LevelFilter, Log};
@@ -38,7 +38,7 @@ fn find_mods() -> std::io::Result<Vec<PathBuf>> {
     Ok(mods)
 }
 
-pub fn load_mods(version: String) {
+pub fn load_mods(version: &str) {
     let mods = find_mods().unwrap_or_else(|e| {
         error!("Failed to find mods: {}", e);
         Vec::new()
@@ -47,11 +47,11 @@ pub fn load_mods(version: String) {
     for mod_path in mods {
         info!("Loading mod: {}", mod_path.display());
 
-        load_mod(&mod_path, &version);
+        load_mod(&mod_path, version);
     }
 }
 
-fn load_mod(path: &PathBuf, version: &String) {
+fn load_mod(path: &PathBuf, version: &str) {
     unsafe {
         let library = match Library::new(path) {
             Ok(library) => {
@@ -64,9 +64,10 @@ fn load_mod(path: &PathBuf, version: &String) {
             }
         };
 
-        match library.get::<unsafe extern fn(&String) -> bool>(b"version") {
+        match library.get::<unsafe extern fn(*const c_char) -> bool>(b"version") {
             Ok(version_func) => {
-                if !version_func(version) {
+                let cstr = CString::new(version).unwrap();
+                if !version_func(cstr.as_ptr()) {
                     error!("Mod doesn't support game version: {}", path.display());
                     error!("This may cause crashes or other issues");
                 }
