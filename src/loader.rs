@@ -85,6 +85,17 @@ fn load_mod(path: &PathBuf, version: &String) {
             }
         };
 
+        match library.get::<unsafe extern fn() -> bool>(b"init") {
+            Ok(init) => {
+                if !init() {
+                    error!("Failed to initialize mod: {}", path.display());
+                }
+            },
+            Err(e) => {
+                warn!("No init function: {}", e);
+            }
+        };
+
         std::mem::forget(library);
     }
 }
