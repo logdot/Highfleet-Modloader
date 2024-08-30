@@ -135,7 +135,7 @@ unsafe extern "system" fn init(_: *mut c_void) -> u32 {
 
     // Start logger
     Logger::try_with_env_or_str("info").expect("Failed configuring logger")
-        .log_to_file(FileSpec::default())
+        .log_to_file(FileSpec::default().directory("Modloader/logs"))
         .write_mode(WriteMode::BufferAndFlush)
         .duplicate_to_stderr(Duplicate::Info)
         .start()
@@ -153,7 +153,7 @@ unsafe extern "system" fn init(_: *mut c_void) -> u32 {
     if let Some(orig_dll_handle) = ORIG_DLL_HANDLE {
         if orig_dll_handle.is_null() {
             let err = GetLastError();
-            error!("Failed to load original DLL");
+            error!("Failed to load original DLL: {err}");
             die();
         }
         debug!("Original DLL handle: {:?}", orig_dll_handle);
