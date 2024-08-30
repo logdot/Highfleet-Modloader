@@ -1,7 +1,7 @@
 use std::{ffi::CString, fs, path::PathBuf};
 
 use libloading::{Library, Symbol};
-use log::{warn, error};
+use log::{debug, error, info, warn};
 
 const MOD_FOLDER: &str = "./Modloader/mods";
 const CONFIG_FOLDER: &str = "./Modloader/config";
@@ -30,7 +30,7 @@ fn find_mods() -> std::io::Result<Vec<PathBuf>> {
         let path = path.path();
 
         if path.is_file() && path.extension().unwrap_or_default() == "dll" {
-            println!("Found mod: {}", path.display());
+            info!("Found mod: {}", path.display());
             mods.push(path);
         }
     }
@@ -45,7 +45,7 @@ pub fn load_mods(version: String) {
     });
 
     for mod_path in mods {
-        println!("Loading mod: {}", mod_path.display());
+        info!("Loading mod: {}", mod_path.display());
 
         load_mod(&mod_path, &version);
     }
@@ -55,7 +55,7 @@ fn load_mod(path: &PathBuf, version: &String) {
     unsafe {
         let library = match Library::new(path) {
             Ok(library) => {
-                println!("Loaded mod: {}", path.display());
+                debug!("Loaded mod: {}", path.display());
                 library
             }
             Err(e) => {
@@ -67,8 +67,8 @@ fn load_mod(path: &PathBuf, version: &String) {
         match library.get::<unsafe extern fn(&String) -> bool>(b"version") {
             Ok(version_func) => {
                 if !version_func(&version) {
-                    warn!("Mod doesn't support game version: {}", path.display());
-                    warn!("This may cause crashes or other issues");
+                    error!("Mod doesn't support game version: {}", path.display());
+                    error!("This may cause crashes or other issues");
                 }
             },
             Err(e) => {
