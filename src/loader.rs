@@ -1,7 +1,7 @@
-use std::{ffi::CString, fs, path::PathBuf};
+use std::{fs, path::PathBuf};
 
-use libloading::{Library, Symbol};
-use log::{debug, error, info, warn};
+use libloading::Library;
+use log::{debug, error, info, warn, LevelFilter, Log};
 
 const MOD_FOLDER: &str = "./Modloader/mods";
 const CONFIG_FOLDER: &str = "./Modloader/config";
@@ -66,13 +66,22 @@ fn load_mod(path: &PathBuf, version: &String) {
 
         match library.get::<unsafe extern fn(&String) -> bool>(b"version") {
             Ok(version_func) => {
-                if !version_func(&version) {
+                if !version_func(version) {
                     error!("Mod doesn't support game version: {}", path.display());
                     error!("This may cause crashes or other issues");
                 }
             },
             Err(e) => {
                 warn!("No version function: {}", e);
+            }
+        };
+
+        match library.get::<unsafe fn(&'static dyn Log, LevelFilter) -> bool>(b"setup_logger") {
+            Ok(setup_logger) => {
+                setup_logger(log::logger(), log::max_level());
+            },
+            Err(e) => {
+                warn!("No setup_logger function: {}", e);
             }
         };
 
