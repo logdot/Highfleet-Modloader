@@ -41,12 +41,24 @@ The versions that can be passed in are:
 If your mod implements this function, it should return either true or false depending on if your mod supports the given version.
 You **may** choose to not initialize your mod if you do not support the game version.
 
-#### `setup_logger(&Log, LevelFilter)`
-The modloader passes in a reference to a logger object and the LevelFilter so that the mod can configure the logger from their end.
-Logs will be outputed in the main modloader terminal window.
+#### Logging
+Rust mods can use the standard `log` macros while sending their output through the modloader's console and log files. Add the API and `log` crates to the mod:
 
-This function can only be used from Rust based mods using the same compiler version as is used with the modloader.
-I'm currently working on a FFI safe implementation which will likely require linking to a shared logging library.
+```toml
+[dependencies]
+highfleet-mod-api = { git = "https://github.com/logdot/Highfleet-Modloader.git" }
+log = "0.4"
+```
+
+Then export the logging bridge once from the mod's library root:
+
+```rust
+highfleet_mod_api::export_logger!();
+```
+
+Calls such as `log::error!`, `log::warn!`, and `log::info!` then use the modloader's formatting and filtering. The bridge uses a versioned C ABI; no Rust trait objects or Rust-owned strings cross the DLL boundary.
+
+Logging remains optional for compatibility. Old mods without the bridge continue to load in new modloaders without logging, and new mods continue to load in old modloaders without logging.
 
 #### `init() -> bool`
 The modloader calls this function last.

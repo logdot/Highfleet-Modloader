@@ -3,6 +3,7 @@
 #![allow(non_snake_case)]
 
 mod export_indices;
+mod host_logging;
 mod intercepted_exports;
 mod orig_exports;
 mod proxied_exports;
@@ -138,6 +139,7 @@ unsafe extern "system" fn init(_: *mut c_void) -> u32 {
         .log_to_file(FileSpec::default().directory("Modloader/logs"))
         .write_mode(WriteMode::BufferAndFlush)
         .duplicate_to_stderr(Duplicate::Info)
+        .format(host_logging::format_log)
         .start()
         .expect("Failed to start logger");
 
