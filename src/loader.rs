@@ -68,7 +68,7 @@ fn load_mod(path: &PathBuf, version: &str) {
 
         host_logging::setup_mod_logging(&library, path);
 
-        match library.get::<unsafe extern fn(*const c_char) -> bool>(b"version") {
+        match library.get::<unsafe extern "C" fn(*const c_char) -> bool>(b"version") {
             Ok(version_func) => {
                 let cstr = CString::new(version).unwrap();
                 if !version_func(cstr.as_ptr()) {
@@ -81,7 +81,7 @@ fn load_mod(path: &PathBuf, version: &str) {
             }
         };
 
-        match library.get::<unsafe extern fn() -> bool>(b"init") {
+        match library.get::<unsafe extern "C" fn() -> bool>(b"init") {
             Ok(init) => {
                 if !init() {
                     error!("Failed to initialize mod: {}", path.display());

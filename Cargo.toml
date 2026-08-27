@@ -11,7 +11,7 @@ resolver = "2"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-proxygen-macros = "0.5.1"
+proxygen-macros = { git = "https://github.com/logdot/proxygen.git", rev = "bf8f791f5c208a750a05d8522d223d82a523ccde" }
 libc = "0.2.149"
 libloading = "0.8"
 log = "0.4.*"

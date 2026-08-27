@@ -1,5 +1,3 @@
-#![feature(naked_functions)]
-#![allow(named_asm_labels)]
 #![allow(non_snake_case)]
 
 mod export_indices;
@@ -62,7 +60,7 @@ const STRING_BUFF_SIZE: usize = 32767;
 /// # Safety
 /// Windows init
 #[no_mangle]
-pub unsafe extern "stdcall" fn DllMain(module: HMODULE, reason: u32, _res: *const c_void) -> i32 {
+pub unsafe extern "system" fn DllMain(module: HMODULE, reason: u32, _res: *const c_void) -> i32 {
     DisableThreadLibraryCalls(module);
     THIS_HANDLE = Some(module);
 
@@ -123,7 +121,7 @@ unsafe fn show_message(title: &str, message: &str) {
 
 /// Called when the thread is spawned
 unsafe extern "system" fn init(_: *mut c_void) -> u32 {
-    ORIG_FUNCS_PTR = ORIGINAL_FUNCS.as_ptr();
+    ORIG_FUNCS_PTR = (&raw const ORIGINAL_FUNCS).cast::<FARPROC>();
     AllocConsole();
     let stdout = std::io::stdout();
     let out_handle = stdout.as_raw_handle();
