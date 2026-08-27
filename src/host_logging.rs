@@ -1,8 +1,11 @@
+use std::collections::HashMap;
 use std::ffi::c_void;
+use std::fs;
 use std::io::Write;
 use std::mem::size_of;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::OnceLock;
 
 use flexi_logger::DeferredNow;
 use highfleet_mod_api::ffi::{
@@ -12,11 +15,54 @@ use highfleet_mod_api::ffi::{
 };
 use libloading::Library;
 use log::{debug, error, warn, Level, Metadata, Record};
+use serde::{Deserialize, Serialize};
 
 const MOD_TARGET_PREFIX: &str = "highfleet_mod::";
 const MAX_LOG_STRING_BYTES: usize = 1024 * 1024;
+const LOGGING_CONFIG_PATH: &str = "./Modloader/config/logging.json";
 
 type SetupModV1 = unsafe extern "C" fn(host: *const HfmHostApiV1) -> u32;
+
+static LOGGING_CONFIG: OnceLock<LoggingConfig> = OnceLock::new();
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[repr(u8)]
+#[serde(rename_all = "lowercase")]
+enum ModLogLevel {
+    Off = 0,
+    Error = HFM_LOG_LEVEL_ERROR as u8,
+    Warn = HFM_LOG_LEVEL_WARN as u8,
+    Info = HFM_LOG_LEVEL_INFO as u8,
+    Debug = HFM_LOG_LEVEL_DEBUG as u8,
+    Trace = HFM_LOG_LEVEL_TRACE as u8,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+#[serde(default)]
+struct LoggingConfig {
+    default_level: ModLogLevel,
+    mods: HashMap<String, ModLogLevel>,
+}
+
+impl Default for LoggingConfig {
+    fn default() -> Self {
+        Self {
+            default_level: ModLogLevel::Debug,
+            mods: HashMap::new(),
+        }
+    }
+}
+
+impl LoggingConfig {
+    fn level_for(&self, name: &str) -> ModLogLevel {
+        self.mods
+            .iter()
+            .find_map(|(configured_name, level)| {
+                configured_name.eq_ignore_ascii_case(name).then_some(*level)
+            })
+            .unwrap_or(self.default_level)
+    }
+}
 
 struct ModLogContext {
     name: String,
@@ -32,12 +78,13 @@ impl ModLogContext {
             .and_then(|name| name.to_str())
             .unwrap_or("unknown-mod");
         let name = sanitize_name(name);
+        let level = logging_config().level_for(&name);
 
         Self {
             target: format!("{MOD_TARGET_PREFIX}{name}"),
             name,
-            enabled: AtomicBool::new(true),
-            max_level: AtomicU8::new(HFM_LOG_LEVEL_TRACE as u8),
+            enabled: AtomicBool::new(level != ModLogLevel::Off),
+            max_level: AtomicU8::new(level as u8),
         }
     }
 
@@ -56,6 +103,51 @@ impl ModLogContext {
                 .build(),
         )
     }
+}
+
+pub fn load_config() {
+    let config = match fs::read_to_string(LOGGING_CONFIG_PATH) {
+        Ok(contents) => match serde_json::from_str(&contents) {
+            Ok(config) => config,
+            Err(error) => {
+                error!(
+                    "Failed to parse logging config at {}: {}. Using defaults",
+                    LOGGING_CONFIG_PATH, error
+                );
+                LoggingConfig::default()
+            }
+        },
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let config = LoggingConfig::default();
+            match serde_json::to_string_pretty(&config)
+                .map_err(|error| error.to_string())
+                .and_then(|contents| {
+                    fs::write(LOGGING_CONFIG_PATH, contents).map_err(|error| error.to_string())
+                }) {
+                Ok(()) => debug!("Created default logging config at {}", LOGGING_CONFIG_PATH),
+                Err(error) => error!(
+                    "Failed to create default logging config at {}: {}",
+                    LOGGING_CONFIG_PATH, error
+                ),
+            }
+            config
+        }
+        Err(error) => {
+            error!(
+                "Failed to read logging config at {}: {}. Using defaults",
+                LOGGING_CONFIG_PATH, error
+            );
+            LoggingConfig::default()
+        }
+    };
+
+    if LOGGING_CONFIG.set(config).is_err() {
+        warn!("Logging config was already loaded; keeping the existing settings");
+    }
+}
+
+fn logging_config() -> &'static LoggingConfig {
+    LOGGING_CONFIG.get_or_init(LoggingConfig::default)
 }
 
 /// Installs the host logging API in a loaded mod when it exports the version 1
@@ -253,6 +345,32 @@ mod tests {
         assert_eq!(level_from_ffi(HFM_LOG_LEVEL_TRACE), Some(Level::Trace));
         assert_eq!(level_from_ffi(0), None);
         assert_eq!(level_from_ffi(u32::MAX), None);
+    }
+
+    #[test]
+    fn resolves_mod_levels_case_insensitively() {
+        let config: LoggingConfig = serde_json::from_str(
+            r#"{
+                "default_level": "warn",
+                "mods": {
+                    "Highfleet-QOL": "trace",
+                    "disabled-mod": "off"
+                }
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(config.level_for("highfleet-qol"), ModLogLevel::Trace);
+        assert_eq!(config.level_for("DISABLED-MOD"), ModLogLevel::Off);
+        assert_eq!(config.level_for("another-mod"), ModLogLevel::Warn);
+    }
+
+    #[test]
+    fn missing_config_fields_use_defaults() {
+        let config: LoggingConfig = serde_json::from_str("{}").unwrap();
+
+        assert_eq!(config.default_level, ModLogLevel::Debug);
+        assert!(config.mods.is_empty());
     }
 
     #[test]

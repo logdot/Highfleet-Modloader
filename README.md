@@ -25,6 +25,31 @@ If you need to install a mod manually, drag and drop it into the `Modloader/mods
 If the mod comes with configuration files, drag and drop it into the `Modloader/config` folder.
 Note that some mods may auto generate their config files.
 
+## Logging configuration
+
+The modloader writes logs to `Modloader/logs` and duplicates `info`, `warn`, and `error` records to its console. It creates `Modloader/config/logging.json` on first launch:
+
+```json
+{
+  "default_level": "debug",
+  "mods": {}
+}
+```
+
+Use a mod DLL's filename without the `.dll` extension to override its log level:
+
+```json
+{
+  "default_level": "info",
+  "mods": {
+    "highfleet-qol": "debug",
+    "noisy-mod": "off"
+  }
+}
+```
+
+Names are matched case-insensitively. Valid levels are `off`, `error`, `warn`, `info`, `debug`, and `trace`. Changes take effect the next time the game starts.
+
 ## Developing mods
 Thanks to the nature of the modloader you can develop almost any DLL and it will be injected into the game.
 This means you have almost absolute control over the game from within it's own process.

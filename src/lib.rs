@@ -133,7 +133,7 @@ unsafe extern "system" fn init(_: *mut c_void) -> u32 {
     SetStdHandle(STD_ERROR_HANDLE, err_handle);
 
     // Start logger
-    Logger::try_with_env_or_str("debug").expect("Failed configuring logger")
+    Logger::try_with_env_or_str("debug,highfleet_mod=trace").expect("Failed configuring logger")
         .log_to_file(FileSpec::default().directory("Modloader/logs"))
         .write_mode(WriteMode::BufferAndFlush)
         .duplicate_to_stderr(Duplicate::Info)
@@ -166,6 +166,7 @@ unsafe extern "system" fn init(_: *mut c_void) -> u32 {
     PROXYGEN_READY = true;
 
     create_folders();
+    host_logging::load_config();
 
     let version = match get_version() {
         Ok(string) => {
