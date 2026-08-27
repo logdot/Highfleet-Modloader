@@ -18,11 +18,10 @@ unsafe fn load_dll_func(index: usize, h_module: HMODULE, func: &str) {
 /// Loads the original DLL functions for later use
 pub unsafe fn load_dll_funcs() {
     debug!("Loading original DLL functions");
-    if ORIG_DLL_HANDLE.is_none() {
+    let Some(dll_handle) = ORIG_DLL_HANDLE else {
         warn!("Original DLL handle is none. Cannot load original DLL funcs");
         return;
-    }
-    let dll_handle = ORIG_DLL_HANDLE.unwrap();
+    };
     load_dll_func(Index_BASS_Apply3D, dll_handle, "BASS_Apply3D");
     load_dll_func(Index_BASS_ChannelBytes2Seconds, dll_handle, "BASS_ChannelBytes2Seconds");
     load_dll_func(Index_BASS_ChannelFlags, dll_handle, "BASS_ChannelFlags");

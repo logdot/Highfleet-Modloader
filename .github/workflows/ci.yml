@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Check, test, and build
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: clippy, rustfmt
+
+      - name: Check API formatting
+        run: cargo fmt -p highfleet-mod-api -- --check
+
+      - name: Lint API
+        run: cargo clippy --locked -p highfleet-mod-api --all-targets -- -D warnings
+
+      - name: Test workspace
+        run: cargo test --workspace --locked
+
+      - name: Check workspace
+        run: cargo check --workspace --locked
+
+      - name: Build release DLL
+        run: cargo build --release -p highfleet-loader --locked
+
+      - name: Stage artifact
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifact
+          Copy-Item target\x86_64-pc-windows-msvc\release\bass.dll artifact\
+          Copy-Item README.md, LICENSE artifact\
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: highfleet-modloader-${{ github.sha }}
+          path: artifact
+          if-no-files-found: error
+          retention-days: 14

@@ -25,6 +25,31 @@ If you need to install a mod manually, drag and drop it into the `Modloader/mods
 If the mod comes with configuration files, drag and drop it into the `Modloader/config` folder.
 Note that some mods may auto generate their config files.
 
+## Logging configuration
+
+The modloader writes logs to `Modloader/logs` and duplicates `info`, `warn`, and `error` records to its console. It creates `Modloader/config/logging.json` on first launch:
+
+```json
+{
+  "default_level": "debug",
+  "mods": {}
+}
+```
+
+Use a mod DLL's filename without the `.dll` extension to override its log level:
+
+```json
+{
+  "default_level": "info",
+  "mods": {
+    "highfleet-qol": "debug",
+    "noisy-mod": "off"
+  }
+}
+```
+
+Names are matched case-insensitively. Valid levels are `off`, `error`, `warn`, `info`, `debug`, and `trace`. Changes take effect the next time the game starts.
+
 ## Developing mods
 Thanks to the nature of the modloader you can develop almost any DLL and it will be injected into the game.
 This means you have almost absolute control over the game from within it's own process.
@@ -41,12 +66,24 @@ The versions that can be passed in are:
 If your mod implements this function, it should return either true or false depending on if your mod supports the given version.
 You **may** choose to not initialize your mod if you do not support the game version.
 
-#### `setup_logger(&Log, LevelFilter)`
-The modloader passes in a reference to a logger object and the LevelFilter so that the mod can configure the logger from their end.
-Logs will be outputed in the main modloader terminal window.
+#### Logging
+Rust mods can use the standard `log` macros while sending their output through the modloader's console and log files. Add the API and `log` crates to the mod:
 
-This function can only be used from Rust based mods using the same compiler version as is used with the modloader.
-I'm currently working on a FFI safe implementation which will likely require linking to a shared logging library.
+```toml
+[dependencies]
+highfleet-mod-api = { git = "https://github.com/logdot/Highfleet-Modloader.git" }
+log = "0.4"
+```
+
+Then export the logging bridge once from the mod's library root:
+
+```rust
+highfleet_mod_api::export_logger!();
+```
+
+Calls such as `log::error!`, `log::warn!`, and `log::info!` then use the modloader's formatting and filtering. The bridge uses a versioned C ABI; no Rust trait objects or Rust-owned strings cross the DLL boundary.
+
+Logging remains optional for compatibility. Old mods without the bridge continue to load in new modloaders without logging, and new mods continue to load in old modloaders without logging.
 
 #### `init() -> bool`
 The modloader calls this function last.
