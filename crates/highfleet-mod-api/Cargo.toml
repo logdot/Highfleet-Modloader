@@ -1,0 +1,10 @@
+[package]
+name = "highfleet-mod-api"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Stable FFI API and Rust logging adapter for Highfleet mods"
+
+[dependencies]
+log = { version = "0.4.28", features = ["std"] }
+thiserror = "2.0"
