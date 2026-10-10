@@ -113,11 +113,17 @@ This function is techincally optional as you could do your setup on your library
 ### Direct mods
 Direct mods are mods (DLLs) designed to run directly with the modloader and allow to more easily modify the game.
 These are mostly intended to be used by mod developers to include in their own mods, and not necessarily end users.
-These are all currently developed by me.
+
+Developed by me:
 
 - [ShipworksExtended](https://github.com/logdot/ShipworksExtended)
 - [Ammo Editor](https://github.com/logdot/ammo-extended)
 - [Highfleet QOL](https://github.com/logdot/highfleet-qol)
+
+Developed by mxtrnhf:
+
+- [Highfleet Manual Elevation](https://github.com/mxtrnhf/highfleet-elevation)
+- [Highfleet Speed Formula](https://github.com/mxtrnhf/highfleet-speed)
 
 ### Indirect mods
 Indirect mods are mods that use direct mods in conjunction with game file modifications to change the game behaviour.
