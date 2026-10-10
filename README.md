@@ -85,6 +85,23 @@ Calls such as `log::error!`, `log::warn!`, and `log::info!` then use the modload
 
 Logging remains optional for compatibility. Old mods without the bridge continue to load in new modloaders without logging, and new mods continue to load in old modloaders without logging.
 
+##### C++ mods
+
+For logging from a C++ mod, add `sdk/include` to your include path and define the setup hook in exactly one source file:
+
+```cpp
+#include <highfleet/log.hpp>
+
+HIGHFLEET_SETUP_LOGGER()
+
+extern "C" __declspec(dllexport) bool __cdecl init() {
+    highfleet::logging::info("Ready!");
+    return true;
+}
+```
+
+For more details, see the [C++ logging SDK documentation](sdk/README.md).
+
 #### `init() -> bool`
 The modloader calls this function last.
 If you return false, the modloader assumes that you have failed to initialize.

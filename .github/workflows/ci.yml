@@ -18,6 +18,25 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  cpp-sdk:
+    name: Test C++ SDK (${{ matrix.os }})
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Configure C++ SDK tests
+        run: cmake -S sdk -B build/cpp-sdk -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build C++ SDK tests
+        run: cmake --build build/cpp-sdk --config Release
+
+      - name: Test C++ SDK
+        run: ctest --test-dir build/cpp-sdk -C Release --output-on-failure
+
   build:
     name: Check, test, and build
     runs-on: windows-latest
@@ -52,6 +71,7 @@ jobs:
           New-Item -ItemType Directory -Force artifact
           Copy-Item target\x86_64-pc-windows-msvc\release\bass.dll artifact\
           Copy-Item README.md, LICENSE artifact\
+          Copy-Item -Recurse sdk artifact\sdk
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
