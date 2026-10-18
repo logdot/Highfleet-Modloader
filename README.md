@@ -6,7 +6,7 @@ However it is intended to be used with custom made highfleet mods.
 ## Instalation
 The installation process is very simple:
 - Go to the [latest release](https://github.com/logdot/Highfleet-Modloader/releases/latest)
-- Download Artifacts.zip
+- Download Modloader.zip (may be called Artifacts.zip in older versions)
 - Extract the zip file into your highfleet folder
 - You should end up with a bass.dll and bass.dll_ in your game folder
 - Then launch the game as normal. If you get a black terminal window, you have successfully installed the modloader.
