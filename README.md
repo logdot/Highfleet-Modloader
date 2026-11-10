@@ -122,8 +122,7 @@ Developed by me:
 
 Developed by mxtrnhf:
 
-- [Highfleet Manual Elevation](https://github.com/mxtrnhf/highfleet-elevation)
-- [Highfleet Speed Formula](https://github.com/mxtrnhf/highfleet-speed)
+- [Highfleet Allies](https://github.com/mxtrnhf/highfleet-allies)
 
 ### Indirect mods
 Indirect mods are mods that use direct mods in conjunction with game file modifications to change the game behaviour.
