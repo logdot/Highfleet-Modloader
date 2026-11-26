@@ -11,8 +11,7 @@ use highfleet_mod_api::patching::{
     HFM_PATCH_OVERLAP, HFM_PATCH_SOURCE_CHANGED,
 };
 pub use patchy_code::{
-    CallBridge, Condition, DetourSite, FlagPolicy, KeepReturn, Label, ReturnType, StackAlignment,
-    Trampoline,
+    CallBridge, Condition, DetourSite, FlagPolicy, KeepReturn, Label, StackAlignment, Trampoline,
 };
 use patchy_code::{TrampolineFixup, TrampolinePlan};
 use std::{ffi::c_void, mem::size_of, num::NonZeroU64, sync::OnceLock};

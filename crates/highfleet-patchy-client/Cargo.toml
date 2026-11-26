@@ -6,7 +6,7 @@ publish = false
 
 [dependencies]
 highfleet-mod-api = { path = "../highfleet-mod-api" }
-patchy-code = { git = "https://github.com/logdot/patchy-rs.git", rev = "64d2eac7b33f81c4a60f18ae834d9daba96b92cf" }
+patchy-code = { git = "https://github.com/logdot/patchy-rs.git", rev = "84993c490f7db47e915d7e0b4270eb3f36f614de" }
 thiserror = "2"
 
 [target.'cfg(windows)'.dependencies]
