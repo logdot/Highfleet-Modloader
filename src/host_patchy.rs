@@ -9,8 +9,10 @@ use crate::session_registry::SessionRegistry;
 use highfleet_mod_api::{
     ffi::HfmStr,
     patching::{
-        HfmCallBridgeV1, HfmPatchApiV1, HfmPatchApiWithCallV1, HfmPatchBytes, HfmPatchSessionId,
-        HfmPatchSetupV1, HFM_PATCH_ABI_VERSION_1, HFM_PATCH_FAILED, HFM_PATCH_FLAGS_KEEP_PRODUCED,
+        HfmCallBridgeV1, HfmPatchApiV1, HfmPatchApiWithCallV1, HfmPatchApiWithDetourV1,
+        HfmPatchBytes, HfmPatchSessionId, HfmPatchSetupV1, HfmTrampolineFixupV1,
+        HfmTrampolinePlanV1, HFM_PATCH_ABI_VERSION_1, HFM_PATCH_FAILED, HFM_PATCH_FIXUP_RELATIVE,
+        HFM_PATCH_FIXUP_REPLAY, HFM_PATCH_FIXUP_RESUME, HFM_PATCH_FLAGS_KEEP_PRODUCED,
         HFM_PATCH_FLAGS_PRESERVE, HFM_PATCH_INVALID_ARGUMENT, HFM_PATCH_OK, HFM_PATCH_OVERLAP,
         HFM_PATCH_RETURN_NEITHER, HFM_PATCH_RETURN_RAX, HFM_PATCH_RETURN_XMM0,
         HFM_PATCH_SOURCE_CHANGED, HFM_PATCH_STACK_ALIGNED_16, HFM_PATCH_STACK_OFFSET_8,
@@ -18,7 +20,10 @@ use highfleet_mod_api::{
 };
 use libloading::Library;
 use log::{debug, error, warn};
-use patchy::{CallBridge, FlagPolicy, KeepReturn, Patch, PatchError, PatchSession, StackAlignment};
+use patchy::{
+    CallBridge, FlagPolicy, KeepReturn, Patch, PatchError, PatchSession, StackAlignment,
+    TrampolineFixup, TrampolinePlan,
+};
 use std::{
     ffi::c_void,
     mem::size_of,
@@ -82,19 +87,22 @@ pub(crate) unsafe fn offer_patchy(path: &Path, setup: HfmPatchSetupV1) -> u32 {
 
 /// Creates the table for one mod. Its context lives for the process because
 /// the mod may keep the table.
-fn patch_api(path: &Path) -> HfmPatchApiWithCallV1 {
+fn patch_api(path: &Path) -> HfmPatchApiWithDetourV1 {
     let context = Box::leak(Box::new(ModContext { path: path.into() }));
-    HfmPatchApiWithCallV1 {
-        base: HfmPatchApiV1 {
-            abi_version: HFM_PATCH_ABI_VERSION_1,
-            struct_size: size_of::<HfmPatchApiWithCallV1>() as u32,
-            context: (context as *mut ModContext).cast(),
-            session_create: Some(session_create),
-            session_discard: Some(session_discard),
-            session_overwrite: Some(session_overwrite),
-            session_install: Some(session_install),
+    HfmPatchApiWithDetourV1 {
+        base: HfmPatchApiWithCallV1 {
+            base: HfmPatchApiV1 {
+                abi_version: HFM_PATCH_ABI_VERSION_1,
+                struct_size: size_of::<HfmPatchApiWithDetourV1>() as u32,
+                context: (context as *mut ModContext).cast(),
+                session_create: Some(session_create),
+                session_discard: Some(session_discard),
+                session_overwrite: Some(session_overwrite),
+                session_install: Some(session_install),
+            },
+            session_patch_call: Some(session_patch_call),
         },
-        session_patch_call: Some(session_patch_call),
+        session_detour: Some(session_detour),
     }
 }
 
@@ -111,9 +119,12 @@ fn patch_status(owner: &ModContext, operation: &str, err: PatchError) -> u32 {
     match err {
         PatchError::OverlappingPatch { .. } => HFM_PATCH_OVERLAP,
         PatchError::SourceChanged { .. } => HFM_PATCH_SOURCE_CHANGED,
-        PatchError::PatchTooSmall { .. } | PatchError::EmptyPatch | PatchError::AddressOverflow => {
-            HFM_PATCH_INVALID_ARGUMENT
-        }
+        PatchError::PatchTooSmall { .. }
+        | PatchError::EmptyPatch
+        | PatchError::EmptyTrampoline
+        | PatchError::ReplaySizeMismatch { .. }
+        | PatchError::TrampolineTooLarge { .. }
+        | PatchError::AddressOverflow => HFM_PATCH_INVALID_ARGUMENT,
         _ => HFM_PATCH_FAILED,
     }
 }
@@ -254,7 +265,12 @@ unsafe extern "C" fn session_patch_call(
     output: *mut usize,
 ) -> u32 {
     run_ffi(|| {
-        if output.is_null() || address == 0 || address.checked_add(size).is_none() {
+        if output.is_null()
+            || !output.is_aligned()
+            || !bridge.is_aligned()
+            || address == 0
+            || address.checked_add(size).is_none()
+        {
             return Err(HFM_PATCH_INVALID_ARGUMENT);
         }
         let name = str::from_utf8(unsafe { request_bytes(name.ptr, name.len)? })
@@ -263,6 +279,81 @@ unsafe extern "C" fn session_patch_call(
         let bridge = unsafe { decode_bridge(raw)? };
         let patch = stage_patch(context, session, name, address, |inner| unsafe {
             inner.patch_call(address, size, bridge)
+        })?;
+        let trampoline = patch.trampoline_address().ok_or(HFM_PATCH_FAILED)?;
+        unsafe { output.write(trampoline) };
+        Ok(())
+    })
+}
+
+// The template and fixup array must be live and immutable during decoding.
+unsafe fn decode_plan(raw: &HfmTrampolinePlanV1) -> Result<TrampolinePlan, u32> {
+    let template = unsafe { request_bytes(raw.template.ptr, raw.template.len)? };
+    let count = raw.fixup_count;
+    if count > template.len()
+        || count > isize::MAX as usize / size_of::<HfmTrampolineFixupV1>()
+        || (count != 0 && (raw.fixups.is_null() || !raw.fixups.is_aligned()))
+    {
+        return Err(HFM_PATCH_INVALID_ARGUMENT);
+    }
+    let records = if count == 0 {
+        &[]
+    } else {
+        unsafe { slice::from_raw_parts(raw.fixups, count) }
+    };
+    let fixups = records
+        .iter()
+        .map(|record| {
+            let HfmTrampolineFixupV1 {
+                kind,
+                reserved,
+                offset,
+                argument,
+            } = *record;
+            if reserved != 0 {
+                return Err(HFM_PATCH_INVALID_ARGUMENT);
+            }
+            match kind {
+                HFM_PATCH_FIXUP_REPLAY => Ok(TrampolineFixup::Replay {
+                    offset,
+                    size: argument,
+                }),
+                HFM_PATCH_FIXUP_RELATIVE => Ok(TrampolineFixup::Relative {
+                    offset,
+                    destination: argument,
+                }),
+                HFM_PATCH_FIXUP_RESUME if argument == 0 => Ok(TrampolineFixup::Resume { offset }),
+                _ => Err(HFM_PATCH_INVALID_ARGUMENT),
+            }
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    TrampolinePlan::new(template.to_vec(), fixups).map_err(|_| HFM_PATCH_INVALID_ARGUMENT)
+}
+
+unsafe extern "C" fn session_detour(
+    context: *mut c_void,
+    session: HfmPatchSessionId,
+    name: HfmStr,
+    address: usize,
+    size: usize,
+    plan: *const HfmTrampolinePlanV1,
+    output: *mut usize,
+) -> u32 {
+    run_ffi(|| {
+        if output.is_null()
+            || !output.is_aligned()
+            || !plan.is_aligned()
+            || address == 0
+            || address.checked_add(size).is_none()
+        {
+            return Err(HFM_PATCH_INVALID_ARGUMENT);
+        }
+        let name = str::from_utf8(unsafe { request_bytes(name.ptr, name.len)? })
+            .map_err(|_| HFM_PATCH_INVALID_ARGUMENT)?;
+        let raw = unsafe { plan.as_ref() }.ok_or(HFM_PATCH_INVALID_ARGUMENT)?;
+        let plan = unsafe { decode_plan(raw)? };
+        let patch = stage_patch(context, session, name, address, |inner| unsafe {
+            inner.detour_plan(address, size, plan)
         })?;
         let trampoline = patch.trampoline_address().ok_or(HFM_PATCH_FAILED)?;
         unsafe { output.write(trampoline) };
@@ -290,10 +381,72 @@ mod tests {
     const REPLACEMENT: u8 = 42;
 
     #[test]
+    fn relative_fixup_preserves_its_destination_during_decoding() {
+        let template = [0xe9, 0, 0, 0, 0];
+        let fixup = HfmTrampolineFixupV1 {
+            kind: HFM_PATCH_FIXUP_RELATIVE,
+            reserved: 0,
+            offset: 1,
+            argument: 0x2000,
+        };
+        let request = HfmTrampolinePlanV1 {
+            template: template.as_slice().into(),
+            fixups: &fixup,
+            fixup_count: 1,
+        };
+        let plan = unsafe { decode_plan(&request) }.unwrap();
+        let code = plan.build(0x1000).unwrap();
+        assert_eq!(&code[1..], &(0x2000i32 - 0x1005).to_le_bytes());
+    }
+
+    #[test]
+    fn detour_rejects_overlapping_fixups() {
+        let api = patch_api(Path::new("test-mod.dll"));
+        let service = ModService(api.base.base);
+        let session = service.create();
+        let source = [0x90u8; 5];
+        let template = [0u8; 8];
+        let fixups = [
+            HfmTrampolineFixupV1 {
+                kind: HFM_PATCH_FIXUP_REPLAY,
+                reserved: 0,
+                offset: 0,
+                argument: 5,
+            },
+            HfmTrampolineFixupV1 {
+                kind: HFM_PATCH_FIXUP_RESUME,
+                reserved: 0,
+                offset: 4,
+                argument: 0,
+            },
+        ];
+        let request = HfmTrampolinePlanV1 {
+            template: template.as_slice().into(),
+            fixups: fixups.as_ptr(),
+            fixup_count: fixups.len(),
+        };
+        let mut output = 0;
+        let status = unsafe {
+            api.session_detour.unwrap()(
+                service.0.context,
+                session,
+                "invalid plan".into(),
+                source.as_ptr() as usize,
+                source.len(),
+                &request,
+                &mut output,
+            )
+        };
+        assert_eq!(status, HFM_PATCH_INVALID_ARGUMENT);
+        assert_eq!(output, 0);
+        assert_eq!(service.discard(session), HFM_PATCH_OK);
+    }
+
+    #[test]
     fn patch_call_rejects_an_unknown_stack_alignment() {
         extern "C" fn callback() {}
         let api = patch_api(Path::new("test-mod.dll"));
-        let service = ModService(api.base);
+        let service = ModService(api.base.base);
         let session = service.create();
         let bridge = HfmCallBridgeV1 {
             callback: callback as *const () as usize,
@@ -308,7 +461,7 @@ mod tests {
         // early the host validates the descriptor.
         let source = [0x90u8; 5];
         let status = unsafe {
-            api.session_patch_call.unwrap()(
+            api.base.session_patch_call.unwrap()(
                 service.0.context,
                 session,
                 "test callback".into(),
@@ -327,7 +480,7 @@ mod tests {
 
     impl ModService {
         fn new() -> Self {
-            Self(patch_api(Path::new("test-mod.dll")).base)
+            Self(patch_api(Path::new("test-mod.dll")).base.base)
         }
 
         fn create(&self) -> HfmPatchSessionId {

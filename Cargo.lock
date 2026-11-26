@@ -375,13 +375,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
+name = "patchy-code"
+version = "0.2.0"
+source = "git+https://github.com/logdot/patchy-rs.git?rev=64d2eac7b33f81c4a60f18ae834d9daba96b92cf#64d2eac7b33f81c4a60f18ae834d9daba96b92cf"
+dependencies = [
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "patchy-rs"
 version = "0.2.0"
-source = "git+https://github.com/logdot/patchy-rs.git?rev=bfcf32516e8d002ca3840564bdfd88d0faff0cf0#bfcf32516e8d002ca3840564bdfd88d0faff0cf0"
+source = "git+https://github.com/logdot/patchy-rs.git?rev=64d2eac7b33f81c4a60f18ae834d9daba96b92cf#64d2eac7b33f81c4a60f18ae834d9daba96b92cf"
 dependencies = [
  "log",
  "mmap-rs",
- "thiserror 1.0.69",
+ "patchy-code",
  "windows 0.62.2",
 ]
 

@@ -147,6 +147,56 @@ pub struct HfmPatchApiWithCallV1 {
     pub session_patch_call: Option<HfmPatchSessionPatchCallV1>,
 }
 
+pub const HFM_PATCH_FIXUP_REPLAY: u32 = 1;
+pub const HFM_PATCH_FIXUP_RELATIVE: u32 = 2;
+pub const HFM_PATCH_FIXUP_RESUME: u32 = 3;
+
+/// A fixup in a machine code template. `offset` is the start of a replay slot
+/// or of a four-byte displacement field at the end of an instruction.
+/// `argument` is the replay slot length, the relative target address, or zero
+/// for resume, respectively. `reserved` must be zero.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct HfmTrampolineFixupV1 {
+    pub kind: u32,
+    pub reserved: u32,
+    pub offset: usize,
+    pub argument: usize,
+}
+
+/// A borrowed trampoline plan with internal labels already resolved.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct HfmTrampolinePlanV1 {
+    /// Nonempty machine code template, at most one executable page.
+    pub template: HfmPatchBytes,
+    /// A live, aligned array of `fixup_count` records. Ignored when empty.
+    pub fixups: *const HfmTrampolineFixupV1,
+    pub fixup_count: usize,
+}
+
+/// Stages a custom detour. The patch span and output follow the
+/// [`HfmPatchSessionPatchCallV1`] contract. Every exit must leave valid machine
+/// state. Replay copies whole instructions verbatim and must be valid where
+/// placed. Referenced code and data must stay live for any installed patch.
+pub type HfmPatchSessionDetourV1 = unsafe extern "C" fn(
+    context: *mut c_void,
+    session: HfmPatchSessionId,
+    name: HfmStr,
+    address: usize,
+    size: usize,
+    plan: *const HfmTrampolinePlanV1,
+    output_trampoline: *mut usize,
+) -> u32;
+
+/// Optional custom detour extension. The earlier prefixes are unchanged.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct HfmPatchApiWithDetourV1 {
+    pub base: HfmPatchApiWithCallV1,
+    pub session_detour: Option<HfmPatchSessionDetourV1>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -165,5 +215,27 @@ mod tests {
             offset_of!(HfmPatchApiWithCallV1, session_patch_call),
             size_of::<HfmPatchApiV1>()
         );
+        assert_eq!(offset_of!(HfmPatchApiWithDetourV1, base), 0);
+        assert_eq!(
+            offset_of!(HfmPatchApiWithDetourV1, session_detour),
+            size_of::<HfmPatchApiWithCallV1>()
+        );
+    }
+
+    #[test]
+    fn trampoline_records_have_the_expected_c_layout() {
+        let pointer_size = size_of::<usize>();
+        assert_eq!(offset_of!(HfmTrampolineFixupV1, kind), 0);
+        assert_eq!(offset_of!(HfmTrampolineFixupV1, reserved), 4);
+        assert_eq!(offset_of!(HfmTrampolineFixupV1, offset), 8);
+        assert_eq!(offset_of!(HfmTrampolineFixupV1, argument), 8 + pointer_size);
+        assert_eq!(size_of::<HfmTrampolineFixupV1>(), 8 + 2 * pointer_size);
+        assert_eq!(offset_of!(HfmTrampolinePlanV1, template), 0);
+        assert_eq!(offset_of!(HfmTrampolinePlanV1, fixups), 2 * pointer_size);
+        assert_eq!(
+            offset_of!(HfmTrampolinePlanV1, fixup_count),
+            3 * pointer_size
+        );
+        assert_eq!(size_of::<HfmTrampolinePlanV1>(), 4 * pointer_size);
     }
 }
