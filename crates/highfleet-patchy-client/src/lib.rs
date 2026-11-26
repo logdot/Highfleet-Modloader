@@ -282,19 +282,6 @@ impl PatchSession {
         }
     }
 
-    /// Stages an already built custom trampoline.
-    ///
-    /// # Safety
-    /// The site and trampoline must satisfy [`Self::detour_trampoline_with`].
-    pub unsafe fn detour_trampoline(
-        &mut self,
-        address: usize,
-        size: usize,
-        trampoline: Trampoline,
-    ) -> Result<Patch> {
-        unsafe { self.detour_trampoline_with(address, size, |_| Ok(trampoline)) }
-    }
-
     /// Builds a custom trampoline locally, then sends the compiled plan to
     /// the loader. The host captures the source bytes and resolves placement.
     /// No closure crosses the ABI.
@@ -305,7 +292,7 @@ impl PatchSession {
     /// The generated code must leave valid machine state on every exit.
     /// Any replay must satisfy [`DetourSite::replay_verbatim`], and referenced
     /// callbacks and data must stay live through process exit if installed.
-    pub unsafe fn detour_trampoline_with<F>(
+    pub unsafe fn detour_trampoline<F>(
         &mut self,
         address: usize,
         size: usize,

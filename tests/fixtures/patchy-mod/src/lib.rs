@@ -65,7 +65,7 @@ fn stage_conditional_replay(session: &mut PatchSession) -> patchy::Result {
     // SAFETY: The fixture owns the source and only calls it before or after
     // installation. The displaced instructions can be replayed verbatim.
     unsafe {
-        session.detour_trampoline_with(address, 5, |site| {
+        session.detour_trampoline(address, 5, |site| {
             let mut code = Trampoline::new();
             let skip = code.new_label();
             code.bytes(&[0x85, 0xc9]); // TEST ECX, ECX

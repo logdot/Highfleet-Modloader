@@ -387,7 +387,7 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 [[package]]
 name = "patchy-code"
 version = "0.2.0"
-source = "git+https://github.com/logdot/patchy-rs.git?rev=84993c490f7db47e915d7e0b4270eb3f36f614de#84993c490f7db47e915d7e0b4270eb3f36f614de"
+source = "git+https://github.com/logdot/patchy-rs.git?rev=19e4f77b8987329fc46cfe6c886f11e4e67528a6#19e4f77b8987329fc46cfe6c886f11e4e67528a6"
 dependencies = [
  "thiserror 1.0.69",
 ]
@@ -395,7 +395,7 @@ dependencies = [
 [[package]]
 name = "patchy-rs"
 version = "0.2.0"
-source = "git+https://github.com/logdot/patchy-rs.git?rev=84993c490f7db47e915d7e0b4270eb3f36f614de#84993c490f7db47e915d7e0b4270eb3f36f614de"
+source = "git+https://github.com/logdot/patchy-rs.git?rev=19e4f77b8987329fc46cfe6c886f11e4e67528a6#19e4f77b8987329fc46cfe6c886f11e4e67528a6"
 dependencies = [
  "log",
  "mmap-rs",

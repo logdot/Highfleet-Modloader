@@ -123,7 +123,7 @@ manifest and call `patchy::export_patchy!()` once at the crate root.
 `PatchSession::new()` then returns a loader-owned session or an error if the
 service was unavailable or incompatible. `overwrite`, `patch_call`, and
 `install_permanently` use the usual Patchy call shape. `overwrite_named`
-supplies a diagnostic name. `detour_trampoline_with` uses the shared Patchy
+supplies a diagnostic name. `detour_trampoline` uses the shared Patchy
 builder on the mod side, while the loader resolves placement, replay, and
 resume. Replay is verbatim; it does not relocate displaced instructions.
 There is no local Patchy fallback. See the
