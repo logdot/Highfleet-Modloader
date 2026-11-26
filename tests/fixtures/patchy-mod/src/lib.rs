@@ -45,6 +45,40 @@ fn stage_callback(session: &mut PatchSession) -> patchy::Result {
     Ok(())
 }
 
+#[cfg(all(windows, target_arch = "x86_64"))]
+#[unsafe(naked)]
+#[unsafe(no_mangle)]
+pub extern "C" fn patchy_test_replay_result(_value: u32) -> u32 {
+    core::arch::naked_asm!(
+        ".byte 0x89, 0xc8",                   // MOV EAX, ECX
+        ".byte 0x83, 0xc0, 0x02, 0x66, 0x90", // ADD EAX, 2; NOP (five-byte site)
+        "add eax, 1",
+        "ret",
+    );
+}
+
+#[cfg(all(windows, target_arch = "x86_64"))]
+fn stage_conditional_replay(session: &mut PatchSession) -> patchy::Result {
+    use patchy::{Condition, Trampoline};
+
+    let address = patchy_test_replay_result as *const () as usize + 2;
+    // SAFETY: The fixture owns the source and only calls it before or after
+    // installation. The displaced instructions can be replayed verbatim.
+    unsafe {
+        session.detour_trampoline_with(address, 5, |site| {
+            let mut code = Trampoline::new();
+            let skip = code.new_label();
+            code.bytes(&[0x85, 0xc9]); // TEST ECX, ECX
+            code.jump_if(Condition::NotEqual, skip);
+            site.replay_verbatim(&mut code);
+            code.bind(skip)?;
+            site.resume(&mut code);
+            Ok(code)
+        })?;
+    }
+    Ok(())
+}
+
 /// Declines every version to show that a rejected version keeps the service.
 #[unsafe(no_mangle)]
 unsafe extern "C" fn version(version: *const c_char) -> bool {
@@ -65,7 +99,10 @@ unsafe extern "C" fn init() -> bool {
         return false;
     };
     #[cfg(all(windows, target_arch = "x86_64"))]
-    if stage_callback(&mut session).is_err() {
+    if stage_callback(&mut session)
+        .and_then(|()| stage_conditional_replay(&mut session))
+        .is_err()
+    {
         return false;
     }
     // SAFETY: TARGET stays live and only this fixture touches it during init.

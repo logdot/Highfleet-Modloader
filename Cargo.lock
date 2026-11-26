@@ -238,6 +238,7 @@ name = "highfleet-patchy-client"
 version = "0.1.0"
 dependencies = [
  "highfleet-mod-api",
+ "patchy-code",
  "thiserror 2.0.20",
 ]
 

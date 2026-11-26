@@ -120,6 +120,9 @@ mod tests {
             let callback_result = library
                 .get::<unsafe extern "C" fn() -> u32>(b"patchy_test_callback_result")
                 .unwrap();
+            let replay_result = library
+                .get::<unsafe extern "C" fn(u32) -> u32>(b"patchy_test_replay_result")
+                .unwrap();
             let version = startup_version();
             assert_eq!(
                 version, UNKNOWN_VERSION,
@@ -127,9 +130,13 @@ mod tests {
             );
             assert_eq!(target(), 7);
             assert_eq!(callback_result(), 8);
+            assert_eq!(replay_result(0), 3);
+            assert_eq!(replay_result(7), 10);
             super::load_mod(&path, &version);
             assert_eq!(target(), 42);
             assert_eq!(callback_result(), 41);
+            assert_eq!(replay_result(0), 3);
+            assert_eq!(replay_result(7), 8);
         }
     }
 }

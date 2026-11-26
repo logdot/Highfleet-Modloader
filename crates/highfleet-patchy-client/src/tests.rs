@@ -6,6 +6,7 @@ use std::sync::atomic::{AtomicU32, Ordering::Relaxed};
 struct Calls {
     stage_count: AtomicU32,
     patch_call_count: AtomicU32,
+    detour_count: AtomicU32,
     install_count: AtomicU32,
     discard_count: AtomicU32,
     install_status: AtomicU32,
@@ -103,6 +104,75 @@ unsafe extern "C" fn patch_call(
 
 fn mock() -> (&'static Calls, Host) {
     let calls = Box::leak(Box::new(Calls::default()));
+    let api = HfmPatchApiWithDetourV1 {
+        base: HfmPatchApiWithCallV1 {
+            base: HfmPatchApiV1 {
+                struct_size: size_of::<HfmPatchApiWithDetourV1>() as u32,
+                ..table(calls)
+            },
+            session_patch_call: Some(patch_call),
+        },
+        session_detour: Some(detour),
+    };
+    let host = unsafe { Host::from_table(std::ptr::from_ref(&api).cast()) }.unwrap();
+    (calls, host)
+}
+
+unsafe extern "C" fn detour(
+    context: *mut c_void,
+    id: HfmPatchSessionId,
+    _name: HfmStr,
+    address: usize,
+    size: usize,
+    request: *const HfmTrampolinePlanV1,
+    output: *mut usize,
+) -> u32 {
+    let request = unsafe { &*request };
+    let template =
+        unsafe { std::slice::from_raw_parts(request.template.ptr, request.template.len) };
+    let fixups = unsafe { std::slice::from_raw_parts(request.fixups, request.fixup_count) };
+    let expected = [
+        (HFM_PATCH_FIXUP_REPLAY, 0, 5),
+        (HFM_PATCH_FIXUP_RESUME, 6, 0),
+    ];
+    if id != 12
+        || address != 0x1000
+        || size != 5
+        || template != [0, 0, 0, 0, 0, 0xe9, 0, 0, 0, 0]
+        || fixups.len() != expected.len()
+        || fixups.iter().zip(expected).any(|(record, expected)| {
+            record.reserved != 0 || (record.kind, record.offset, record.argument) != expected
+        })
+    {
+        return HFM_PATCH_INVALID_ARGUMENT;
+    }
+    unsafe { &*context.cast::<Calls>() }
+        .detour_count
+        .fetch_add(1, Relaxed);
+    unsafe { output.write(0x3000) };
+    HFM_PATCH_OK
+}
+
+#[test]
+fn custom_detour_sends_replay_and_resume_as_fixups() {
+    let (calls, host) = mock();
+    let mut session = PatchSession::from_host(host).unwrap();
+    let patch = unsafe {
+        session.detour_trampoline_with(0x1000, 5, |site| {
+            let mut code = Trampoline::new();
+            site.replay_verbatim(&mut code);
+            site.resume(&mut code);
+            Ok(code)
+        })
+    }
+    .unwrap();
+    assert_eq!(patch.trampoline_address(), Some(0x3000));
+    assert_eq!(calls.detour_count.load(Relaxed), 1);
+}
+
+#[test]
+fn a_callback_only_host_rejects_custom_detours_before_running_the_builder() {
+    let calls = Box::leak(Box::new(Calls::default()));
     let api = HfmPatchApiWithCallV1 {
         base: HfmPatchApiV1 {
             struct_size: size_of::<HfmPatchApiWithCallV1>() as u32,
@@ -111,7 +181,27 @@ fn mock() -> (&'static Calls, Host) {
         session_patch_call: Some(patch_call),
     };
     let host = unsafe { Host::from_table(std::ptr::from_ref(&api).cast()) }.unwrap();
-    (calls, host)
+    let mut session = PatchSession::from_host(host).unwrap();
+    let result = unsafe {
+        session.detour_trampoline_with(0x1000, 5, |_| panic!("unsupported host ran the builder"))
+    };
+    assert!(matches!(
+        result,
+        Err(PatchError::MissingCallback("session_detour"))
+    ));
+}
+
+#[test]
+fn a_relative_jump_encodes_the_absolute_target_in_its_fixup() {
+    let mut code = Trampoline::new();
+    code.relative_jump(0x3000);
+    let plan = code.into_plan().unwrap();
+    let fixups = encode_fixups(&plan);
+    assert_eq!(fixups.len(), 1);
+    let fixup = &fixups[0];
+    assert_eq!(fixup.kind, HFM_PATCH_FIXUP_RELATIVE);
+    assert_eq!(fixup.offset, 1);
+    assert_eq!(fixup.argument, 0x3000);
 }
 
 #[test]
