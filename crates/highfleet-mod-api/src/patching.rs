@@ -42,14 +42,6 @@ pub type HfmPatchSessionOverwriteV1 = unsafe extern "C" fn(
 pub type HfmPatchSessionInstallV1 =
     unsafe extern "C" fn(context: *mut c_void, session: HfmPatchSessionId) -> u32;
 
-pub const HFM_PATCH_STACK_ALIGNED_16: u32 = 0;
-pub const HFM_PATCH_STACK_OFFSET_8: u32 = 1;
-pub const HFM_PATCH_FLAGS_PRESERVE: u32 = 0;
-pub const HFM_PATCH_FLAGS_KEEP_PRODUCED: u32 = 1;
-pub const HFM_PATCH_RETURN_NEITHER: u32 = 0;
-pub const HFM_PATCH_RETURN_RAX: u32 = 1;
-pub const HFM_PATCH_RETURN_XMM0: u32 = 2;
-
 /// An immutable byte range borrowed during a host call. Null is allowed only
 /// for an empty range.
 #[repr(C)]
@@ -57,13 +49,6 @@ pub const HFM_PATCH_RETURN_XMM0: u32 = 2;
 pub struct HfmPatchBytes {
     pub ptr: *const u8,
     pub len: usize,
-}
-
-impl HfmPatchBytes {
-    pub const EMPTY: Self = Self {
-        ptr: core::ptr::null(),
-        len: 0,
-    };
 }
 
 impl From<&[u8]> for HfmPatchBytes {
@@ -74,41 +59,6 @@ impl From<&[u8]> for HfmPatchBytes {
         }
     }
 }
-
-/// A Windows x64 callback bridge. The callback must not take stack-passed
-/// arguments or unwind out of the bridge, and must remain live through
-/// process exit if installed. The direction flag must be clear on entry.
-///
-/// `stack_alignment` describes RSP at the patch site. The snippets are
-/// verbatim, position-independent, straight-line instructions that must fall
-/// through with RSP unchanged without modifying the bridge's saved state.
-/// `after_call` runs before register restoration.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct HfmCallBridgeV1 {
-    pub callback: usize,
-    pub stack_alignment: u32,
-    pub flags: u32,
-    pub keep_return: u32,
-    pub before_call: HfmPatchBytes,
-    pub after_call: HfmPatchBytes,
-}
-
-/// Stages a callback and a jump to `address + size`, without replaying the
-/// replaced instructions. The source span must remain readable through
-/// install and contain complete instructions with no incoming branches into
-/// its interior. On success, writes the trampoline address to the supplied
-/// live, aligned, writable output pointer. Do not use the trampoline address
-/// unless and until session installation succeeds.
-pub type HfmPatchSessionPatchCallV1 = unsafe extern "C" fn(
-    context: *mut c_void,
-    session: HfmPatchSessionId,
-    name: HfmStr,
-    address: usize,
-    size: usize,
-    bridge: *const HfmCallBridgeV1,
-    output_trampoline: *mut usize,
-) -> u32;
 
 /// A process-lifetime capability bound to the receiving mod.
 ///
@@ -134,19 +84,12 @@ pub struct HfmPatchApiV1 {
     /// Consumes a session belonging to this context, even if install fails.
     /// No other thread may execute a patch source while it is being written.
     pub session_install: Option<HfmPatchSessionInstallV1>,
+    /// Stages a trampoline and returns its address.
+    pub session_detour: Option<HfmPatchSessionDetourV1>,
 }
 
-/// The optional callback extension to the v1 overwrite service.
-///
-/// Read the extension only if the prefix's `struct_size` is large enough.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct HfmPatchApiWithCallV1 {
-    pub base: HfmPatchApiV1,
-    /// Stages a call bridge, then resumes after the replaced span.
-    pub session_patch_call: Option<HfmPatchSessionPatchCallV1>,
-}
-
+/// Copies the displaced source span verbatim. Relocating instructions would
+/// require a different fixup kind, not a change in meaning of this one.
 pub const HFM_PATCH_FIXUP_REPLAY: u32 = 1;
 pub const HFM_PATCH_FIXUP_RELATIVE: u32 = 2;
 pub const HFM_PATCH_FIXUP_RESUME: u32 = 3;
@@ -175,10 +118,14 @@ pub struct HfmTrampolinePlanV1 {
     pub fixup_count: usize,
 }
 
-/// Stages a custom detour. The patch span and output follow the
-/// [`HfmPatchSessionPatchCallV1`] contract. Every exit must leave valid machine
-/// state. Replay copies whole instructions verbatim and must be valid where
-/// placed. Referenced code and data must stay live for any installed patch.
+/// Stages a detour. The source span must stay readable through installation,
+/// contain whole instructions, and have no incoming branches into its
+/// interior. Every trampoline exit must leave valid machine state. Replay
+/// copies whole instructions verbatim and must be valid where placed.
+/// Referenced code and data must stay live for any installed patch.
+///
+/// On success, writes the trampoline address to a live, aligned, writable
+/// output pointer. Do not use that address unless installation succeeds.
 pub type HfmPatchSessionDetourV1 = unsafe extern "C" fn(
     context: *mut c_void,
     session: HfmPatchSessionId,
@@ -188,14 +135,6 @@ pub type HfmPatchSessionDetourV1 = unsafe extern "C" fn(
     plan: *const HfmTrampolinePlanV1,
     output_trampoline: *mut usize,
 ) -> u32;
-
-/// Optional custom detour extension. The earlier prefixes are unchanged.
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct HfmPatchApiWithDetourV1 {
-    pub base: HfmPatchApiWithCallV1,
-    pub session_detour: Option<HfmPatchSessionDetourV1>,
-}
 
 #[cfg(test)]
 mod tests {
@@ -209,17 +148,11 @@ mod tests {
         assert_eq!(offset_of!(HfmPatchApiV1, struct_size), 4);
         assert_eq!(offset_of!(HfmPatchApiV1, context), 8);
         assert_eq!(offset_of!(HfmPatchApiV1, session_create), 8 + pointer_size);
-        assert_eq!(size_of::<HfmPatchApiV1>(), 8 + pointer_size * 5);
-        assert_eq!(offset_of!(HfmPatchApiWithCallV1, base), 0);
         assert_eq!(
-            offset_of!(HfmPatchApiWithCallV1, session_patch_call),
-            size_of::<HfmPatchApiV1>()
+            offset_of!(HfmPatchApiV1, session_detour),
+            8 + pointer_size * 5
         );
-        assert_eq!(offset_of!(HfmPatchApiWithDetourV1, base), 0);
-        assert_eq!(
-            offset_of!(HfmPatchApiWithDetourV1, session_detour),
-            size_of::<HfmPatchApiWithCallV1>()
-        );
+        assert_eq!(size_of::<HfmPatchApiV1>(), 8 + pointer_size * 6);
     }
 
     #[test]
