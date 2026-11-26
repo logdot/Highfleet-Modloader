@@ -15,10 +15,14 @@ use highfleet_mod_api::patching::{
     HFM_PATCH_STACK_OFFSET_8,
 };
 pub use patchy_code::{
-    CallBridge, Condition, DetourSite, FlagPolicy, KeepReturn, Label, StackAlignment, Trampoline,
+    CallBridge, Condition, DetourSite, FlagPolicy, KeepReturn, Label, ReturnType, StackAlignment,
+    Trampoline,
 };
 use patchy_code::{TrampolineFixup, TrampolinePlan};
 use std::{ffi::c_void, mem::size_of, num::NonZeroU64, sync::OnceLock};
+
+mod process_module;
+pub use process_module::ProcessModule;
 
 pub type Result<T = ()> = std::result::Result<T, PatchError>;
 
