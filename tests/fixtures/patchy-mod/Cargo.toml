@@ -10,4 +10,4 @@ test = false
 doctest = false
 
 [dependencies]
-highfleet-mod-api = { path = "../../../crates/highfleet-mod-api" }
+patchy = { package = "highfleet-patchy-client", path = "../../../crates/highfleet-patchy-client" }

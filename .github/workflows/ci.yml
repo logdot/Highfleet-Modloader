@@ -51,10 +51,10 @@ jobs:
           components: clippy, rustfmt
 
       - name: Check API formatting
-        run: cargo fmt -p highfleet-mod-api -- --check
+        run: cargo fmt -p highfleet-mod-api -p highfleet-patchy-client -p patchy-test-mod -- --check
 
       - name: Lint API
-        run: cargo clippy --locked -p highfleet-mod-api --all-targets -- -D warnings
+        run: cargo clippy --locked -p highfleet-mod-api -p highfleet-patchy-client -p patchy-test-mod --all-targets -- -D warnings
 
       - name: Test workspace
         run: cargo test --workspace --locked

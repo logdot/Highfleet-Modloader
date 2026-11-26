@@ -234,6 +234,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "highfleet-patchy-client"
+version = "0.1.0"
+dependencies = [
+ "highfleet-mod-api",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "iana-time-zone"
 version = "0.1.65"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -397,7 +405,7 @@ dependencies = [
 name = "patchy-test-mod"
 version = "0.0.0"
 dependencies = [
- "highfleet-mod-api",
+ "highfleet-patchy-client",
 ]
 
 [[package]]
