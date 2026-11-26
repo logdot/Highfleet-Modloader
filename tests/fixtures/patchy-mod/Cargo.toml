@@ -1,0 +1,13 @@
+[package]
+name = "patchy-test-mod"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+test = false
+doctest = false
+
+[dependencies]
+highfleet-mod-api = { path = "../../../crates/highfleet-mod-api" }

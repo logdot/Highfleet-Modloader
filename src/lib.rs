@@ -2,22 +2,24 @@
 
 mod export_indices;
 mod host_logging;
+mod host_patchy;
 mod intercepted_exports;
 mod orig_exports;
 mod proxied_exports;
 mod loader;
+mod session_registry;
 mod versioning;
 
 use flexi_logger::{Duplicate, FileSpec, Logger, WriteMode};
 #[allow(unused_imports)]
 pub use intercepted_exports::*;
 use loader::{create_folders, load_mods};
-use log::{debug, error, info, warn};
+use log::{debug, error, info};
 pub use proxied_exports::*;
 
 use export_indices::TOTAL_EXPORTS;
 use orig_exports::load_dll_funcs;
-use versioning::get_version;
+use versioning::startup_version;
 #[cfg(target_arch="x86_64")]
 use std::arch::x86_64::_mm_pause;
 #[cfg(target_arch="x86")]
@@ -168,18 +170,7 @@ unsafe extern "system" fn init(_: *mut c_void) -> u32 {
     create_folders();
     host_logging::load_config();
 
-    let version = match get_version() {
-        Ok(string) => {
-            info!("Highfleet version: {string}");
-            string
-        }
-        Err(e) => {
-            warn!("Error fetching version: {e}");
-            "Unknown".to_string()
-        }
-    };
-
-    load_mods(&version);
+    load_mods(&startup_version());
 
     0
 }

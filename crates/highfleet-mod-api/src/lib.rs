@@ -6,6 +6,7 @@
 
 pub mod ffi;
 mod logging;
+pub mod patching;
 
 pub use logging::{install_logger, InstallError};
 
