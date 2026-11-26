@@ -9,14 +9,16 @@ use crate::session_registry::SessionRegistry;
 use highfleet_mod_api::{
     ffi::HfmStr,
     patching::{
-        HfmPatchApiV1, HfmPatchSessionId, HfmPatchSetupV1, HFM_PATCH_ABI_VERSION_1,
-        HFM_PATCH_FAILED, HFM_PATCH_INVALID_ARGUMENT, HFM_PATCH_OK, HFM_PATCH_OVERLAP,
-        HFM_PATCH_SOURCE_CHANGED,
+        HfmCallBridgeV1, HfmPatchApiV1, HfmPatchApiWithCallV1, HfmPatchBytes, HfmPatchSessionId,
+        HfmPatchSetupV1, HFM_PATCH_ABI_VERSION_1, HFM_PATCH_FAILED, HFM_PATCH_FLAGS_KEEP_PRODUCED,
+        HFM_PATCH_FLAGS_PRESERVE, HFM_PATCH_INVALID_ARGUMENT, HFM_PATCH_OK, HFM_PATCH_OVERLAP,
+        HFM_PATCH_RETURN_NEITHER, HFM_PATCH_RETURN_RAX, HFM_PATCH_RETURN_XMM0,
+        HFM_PATCH_SOURCE_CHANGED, HFM_PATCH_STACK_ALIGNED_16, HFM_PATCH_STACK_OFFSET_8,
     },
 };
 use libloading::Library;
 use log::{debug, error, warn};
-use patchy::{PatchError, PatchSession};
+use patchy::{CallBridge, FlagPolicy, KeepReturn, Patch, PatchError, PatchSession, StackAlignment};
 use std::{
     ffi::c_void,
     mem::size_of,
@@ -74,21 +76,25 @@ pub unsafe fn setup_mod_patching(library: &Library, path: &Path) {
 /// # Safety
 /// The setup callback must accept the v1 table and must not unwind.
 pub(crate) unsafe fn offer_patchy(path: &Path, setup: HfmPatchSetupV1) -> u32 {
-    unsafe { setup(&patch_api(path)) }
+    let api = patch_api(path);
+    unsafe { setup(std::ptr::from_ref(&api).cast()) }
 }
 
 /// Creates the table for one mod. Its context lives for the process because
 /// the mod may keep the table.
-fn patch_api(path: &Path) -> HfmPatchApiV1 {
+fn patch_api(path: &Path) -> HfmPatchApiWithCallV1 {
     let context = Box::leak(Box::new(ModContext { path: path.into() }));
-    HfmPatchApiV1 {
-        abi_version: HFM_PATCH_ABI_VERSION_1,
-        struct_size: size_of::<HfmPatchApiV1>() as u32,
-        context: (context as *mut ModContext).cast(),
-        session_create: Some(session_create),
-        session_discard: Some(session_discard),
-        session_overwrite: Some(session_overwrite),
-        session_install: Some(session_install),
+    HfmPatchApiWithCallV1 {
+        base: HfmPatchApiV1 {
+            abi_version: HFM_PATCH_ABI_VERSION_1,
+            struct_size: size_of::<HfmPatchApiWithCallV1>() as u32,
+            context: (context as *mut ModContext).cast(),
+            session_create: Some(session_create),
+            session_discard: Some(session_discard),
+            session_overwrite: Some(session_overwrite),
+            session_install: Some(session_install),
+        },
+        session_patch_call: Some(session_patch_call),
     }
 }
 
@@ -105,6 +111,9 @@ fn patch_status(owner: &ModContext, operation: &str, err: PatchError) -> u32 {
     match err {
         PatchError::OverlappingPatch { .. } => HFM_PATCH_OVERLAP,
         PatchError::SourceChanged { .. } => HFM_PATCH_SOURCE_CHANGED,
+        PatchError::PatchTooSmall { .. } | PatchError::EmptyPatch | PatchError::AddressOverflow => {
+            HFM_PATCH_INVALID_ARGUMENT
+        }
         _ => HFM_PATCH_FAILED,
     }
 }
@@ -152,6 +161,30 @@ unsafe fn request_bytes<'a>(bytes: *const u8, len: usize) -> Result<&'a [u8], u3
     Ok(unsafe { slice::from_raw_parts(bytes, len) })
 }
 
+fn stage_patch(
+    context: *mut c_void,
+    session: HfmPatchSessionId,
+    name: &str,
+    address: usize,
+    stage: impl FnOnce(&mut PatchSession) -> patchy::Result<Patch>,
+) -> Result<Patch, u32> {
+    let (owner, staged) = {
+        // Lock source access before the registry if both are needed.
+        let _source = source_access();
+        let mut sessions = sessions();
+        let session = sessions
+            .get_mut(owner_key(context), session)
+            .ok_or(HFM_PATCH_INVALID_ARGUMENT)?;
+        (session.owner, stage(&mut session.inner))
+    };
+    let patch = staged.map_err(|err| patch_status(owner, name, err))?;
+    debug!(
+        "Mod {} prepared {name} at {address:#x}",
+        owner.path.display()
+    );
+    Ok(patch)
+}
+
 unsafe extern "C" fn session_overwrite(
     context: *mut c_void,
     session: HfmPatchSessionId,
@@ -168,23 +201,71 @@ unsafe extern "C" fn session_overwrite(
             return Err(HFM_PATCH_INVALID_ARGUMENT);
         }
 
-        let (owner, staged) = {
-            // Both staging and installation touch live process memory. Lock
-            // source access before the registry if both are needed.
-            let _source = source_access();
-            let mut sessions = sessions();
-            let session = sessions
-                .get_mut(owner_key(context), session)
-                .ok_or(HFM_PATCH_INVALID_ARGUMENT)?;
-            (session.owner, unsafe {
-                session.inner.overwrite(address, replacement)
-            })
-        };
-        staged.map_err(|err| patch_status(owner, name, err))?;
-        debug!(
-            "Mod {} prepared {name} at {address:#x}",
-            owner.path.display()
-        );
+        stage_patch(context, session, name, address, |inner| unsafe {
+            inner.overwrite(address, replacement)
+        })?;
+        Ok(())
+    })
+}
+
+// The descriptor's nonempty byte ranges must be readable and immutable for
+// the lifetime of the borrow. No bytes are retained by Patchy after staging.
+unsafe fn decode_bridge(raw: &HfmCallBridgeV1) -> Result<CallBridge<'_>, u32> {
+    unsafe fn snippet<'a>(bytes: &'a HfmPatchBytes) -> Result<&'a [u8], u32> {
+        if bytes.len == 0 {
+            Ok(&[])
+        } else {
+            unsafe { request_bytes(bytes.ptr, bytes.len) }
+        }
+    }
+    if raw.callback == 0 {
+        return Err(HFM_PATCH_INVALID_ARGUMENT);
+    }
+    Ok(CallBridge {
+        callback: raw.callback as *const (),
+        incoming_stack: match raw.stack_alignment {
+            HFM_PATCH_STACK_ALIGNED_16 => StackAlignment::Aligned16,
+            HFM_PATCH_STACK_OFFSET_8 => StackAlignment::Offset8,
+            _ => return Err(HFM_PATCH_INVALID_ARGUMENT),
+        },
+        flags: match raw.flags {
+            HFM_PATCH_FLAGS_PRESERVE => FlagPolicy::Preserve,
+            HFM_PATCH_FLAGS_KEEP_PRODUCED => FlagPolicy::KeepProduced,
+            _ => return Err(HFM_PATCH_INVALID_ARGUMENT),
+        },
+        keep_return: match raw.keep_return {
+            HFM_PATCH_RETURN_NEITHER => KeepReturn::Neither,
+            HFM_PATCH_RETURN_RAX => KeepReturn::Rax,
+            HFM_PATCH_RETURN_XMM0 => KeepReturn::Xmm0,
+            _ => return Err(HFM_PATCH_INVALID_ARGUMENT),
+        },
+        before_call: unsafe { snippet(&raw.before_call)? },
+        after_call: unsafe { snippet(&raw.after_call)? },
+    })
+}
+
+unsafe extern "C" fn session_patch_call(
+    context: *mut c_void,
+    session: HfmPatchSessionId,
+    name: HfmStr,
+    address: usize,
+    size: usize,
+    bridge: *const HfmCallBridgeV1,
+    output: *mut usize,
+) -> u32 {
+    run_ffi(|| {
+        if output.is_null() || address == 0 || address.checked_add(size).is_none() {
+            return Err(HFM_PATCH_INVALID_ARGUMENT);
+        }
+        let name = str::from_utf8(unsafe { request_bytes(name.ptr, name.len)? })
+            .map_err(|_| HFM_PATCH_INVALID_ARGUMENT)?;
+        let raw = unsafe { bridge.as_ref() }.ok_or(HFM_PATCH_INVALID_ARGUMENT)?;
+        let bridge = unsafe { decode_bridge(raw)? };
+        let patch = stage_patch(context, session, name, address, |inner| unsafe {
+            inner.patch_call(address, size, bridge)
+        })?;
+        let trampoline = patch.trampoline_address().ok_or(HFM_PATCH_FAILED)?;
+        unsafe { output.write(trampoline) };
         Ok(())
     })
 }
@@ -208,12 +289,45 @@ mod tests {
     const ORIGINAL: u8 = 7;
     const REPLACEMENT: u8 = 42;
 
+    #[test]
+    fn patch_call_rejects_an_unknown_stack_alignment() {
+        extern "C" fn callback() {}
+        let api = patch_api(Path::new("test-mod.dll"));
+        let service = ModService(api.base);
+        let session = service.create();
+        let bridge = HfmCallBridgeV1 {
+            callback: callback as *const () as usize,
+            stack_alignment: u32::MAX,
+            flags: HFM_PATCH_FLAGS_PRESERVE,
+            keep_return: HFM_PATCH_RETURN_NEITHER,
+            before_call: HfmPatchBytes::EMPTY,
+            after_call: HfmPatchBytes::EMPTY,
+        };
+        let mut trampoline = 0;
+        // A readable source keeps the rejection test independent of how
+        // early the host validates the descriptor.
+        let source = [0x90u8; 5];
+        let status = unsafe {
+            api.session_patch_call.unwrap()(
+                service.0.context,
+                session,
+                "test callback".into(),
+                source.as_ptr() as usize,
+                source.len(),
+                &bridge,
+                &mut trampoline,
+            )
+        };
+        assert_eq!(status, HFM_PATCH_INVALID_ARGUMENT);
+        assert_eq!(service.discard(session), HFM_PATCH_OK);
+    }
+
     /// The table one mod would receive during setup.
     struct ModService(HfmPatchApiV1);
 
     impl ModService {
         fn new() -> Self {
-            Self(patch_api(Path::new("test-mod.dll")))
+            Self(patch_api(Path::new("test-mod.dll")).base)
         }
 
         fn create(&self) -> HfmPatchSessionId {
