@@ -102,6 +102,33 @@ extern "C" __declspec(dllexport) bool __cdecl init() {
 
 For more details, see the [C++ logging SDK documentation](sdk/README.md).
 
+#### Shared Patchy service (provisional)
+
+The Modloader can provide one Patchy engine to participating mods, so patches
+installed through the service share an overlap registry. The experimental
+`highfleet_mod_setup_patchy_v1` export receives the separate
+[`HfmPatchApiV1`](crates/highfleet-mod-api/src/patching.rs) table after logging
+setup and before `version` and `init`. Return `0` to accept it; any other value
+declines it and is logged as a warning. A mod without this export still loads
+normally. Unknown builds and rejected version checks do not disable the service.
+
+Sessions are referred to by loader-issued 64-bit IDs. Zero is never issued, IDs
+are never reused, and an unknown, consumed, or another mod's ID is rejected
+without affecting any session. The ABI is provisional and accepts either a
+byte overwrite or a trampoline plan. It is separate from Patchy's standalone
+C ABI; mods using the standalone library do not share the loader's registry.
+
+Rust mods can alias the `highfleet-patchy-client` package as `patchy` in their
+manifest and call `patchy::export_patchy!()` once at the crate root.
+`PatchSession::new()` then returns a loader-owned session or an error if the
+service was unavailable or incompatible. `overwrite`, `patch_call`, and
+`install_permanently` use the usual Patchy call shape. `overwrite_named`
+supplies a diagnostic name. `detour_trampoline_with` uses the shared Patchy
+builder on the mod side, while the loader resolves placement, replay, and
+resume. Replay is verbatim; it does not relocate displaced instructions.
+There is no local Patchy fallback. See the
+[test mod](tests/fixtures/patchy-mod/src/lib.rs) for examples.
+
 #### `init() -> bool`
 The modloader calls this function last.
 If you return false, the modloader assumes that you have failed to initialize.

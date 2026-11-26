@@ -3,7 +3,7 @@ use std::{ffi::CString, fs, os::raw::c_char, path::PathBuf};
 use libloading::Library;
 use log::{debug, error, info, warn};
 
-use crate::host_logging;
+use crate::{host_logging, host_patchy};
 
 const MOD_FOLDER: &str = "./Modloader/mods";
 const CONFIG_FOLDER: &str = "./Modloader/config";
@@ -67,15 +67,18 @@ fn load_mod(path: &PathBuf, version: &str) {
         };
 
         host_logging::setup_mod_logging(&library, path);
+        host_patchy::setup_mod_patching(&library, path);
 
         match library.get::<unsafe extern "C" fn(*const c_char) -> bool>(b"version") {
             Ok(version_func) => {
                 let cstr = CString::new(version).unwrap();
                 if !version_func(cstr.as_ptr()) {
-                    error!("Mod doesn't support game version: {}", path.display());
-                    error!("This may cause crashes or other issues");
+                    warn!(
+                        "Mod doesn't support game version {version}: {}. This may cause crashes or other issues",
+                        path.display()
+                    );
                 }
-            },
+            }
             Err(e) => {
                 warn!("No version function: {}", e);
             }
@@ -86,12 +89,54 @@ fn load_mod(path: &PathBuf, version: &str) {
                 if !init() {
                     error!("Failed to initialize mod: {}", path.display());
                 }
-            },
+            }
             Err(e) => {
                 warn!("No init function: {}", e);
             }
         };
 
         std::mem::forget(library);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::versioning::{startup_version, UNKNOWN_VERSION};
+
+    #[test]
+    #[ignore = "requires a built patchy-test-mod DLL; run with PATCHY_TEST_MOD set"]
+    fn unknown_build_still_initializes_a_patchy_mod_that_declines_the_version() {
+        let path = std::path::PathBuf::from(
+            std::env::var_os("PATCHY_TEST_MOD").expect("PATCHY_TEST_MOD must name the fixture DLL"),
+        )
+        .canonicalize()
+        .unwrap();
+        // SAFETY: This test controls the fixture DLL and its export signature.
+        unsafe {
+            let library = libloading::Library::new(&path).unwrap();
+            let target = library
+                .get::<unsafe extern "C" fn() -> u8>(b"patchy_test_target")
+                .unwrap();
+            let callback_result = library
+                .get::<unsafe extern "C" fn() -> u32>(b"patchy_test_callback_result")
+                .unwrap();
+            let replay_result = library
+                .get::<unsafe extern "C" fn(u32) -> u32>(b"patchy_test_replay_result")
+                .unwrap();
+            let version = startup_version();
+            assert_eq!(
+                version, UNKNOWN_VERSION,
+                "the test runner is not a known game build"
+            );
+            assert_eq!(target(), 7);
+            assert_eq!(callback_result(), 8);
+            assert_eq!(replay_result(0), 3);
+            assert_eq!(replay_result(7), 10);
+            super::load_mod(&path, &version);
+            assert_eq!(target(), 42);
+            assert_eq!(callback_result(), 41);
+            assert_eq!(replay_result(0), 3);
+            assert_eq!(replay_result(7), 8);
+        }
     }
 }

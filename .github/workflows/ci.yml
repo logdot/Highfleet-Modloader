@@ -51,13 +51,27 @@ jobs:
           components: clippy, rustfmt
 
       - name: Check API formatting
-        run: cargo fmt -p highfleet-mod-api -- --check
+        run: cargo fmt -p highfleet-mod-api -p highfleet-patchy-client -p patchy-test-mod -- --check
 
       - name: Lint API
-        run: cargo clippy --locked -p highfleet-mod-api --all-targets -- -D warnings
+        run: cargo clippy --locked -p highfleet-mod-api -p highfleet-patchy-client -p patchy-test-mod --all-targets -- -D warnings
 
       - name: Test workspace
         run: cargo test --workspace --locked
+
+      - name: Test the Patchy capability with a mod DLL
+        shell: pwsh
+        run: |
+          cargo build -p patchy-test-mod --locked
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:PATCHY_TEST_MOD = Join-Path $env:GITHUB_WORKSPACE 'target\x86_64-pc-windows-msvc\debug\patchy_test_mod.dll'
+          cargo test -p highfleet-loader --lib --locked -- --ignored --exact loader::tests::unknown_build_still_initializes_a_patchy_mod_that_declines_the_version | Tee-Object -Variable output
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # libtest succeeds when a filter selects nothing, so require the run.
+          if (-not ($output -match '^test result: ok\. 1 passed')) {
+            Write-Error 'The Patchy DLL test did not run'
+            exit 1
+          }
 
       - name: Check workspace
         run: cargo check --workspace --locked

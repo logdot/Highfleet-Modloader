@@ -1,0 +1,13 @@
+[package]
+name = "highfleet-patchy-client"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+highfleet-mod-api = { path = "../highfleet-mod-api" }
+patchy-code = { git = "https://github.com/logdot/patchy-rs.git", rev = "64d2eac7b33f81c4a60f18ae834d9daba96b92cf" }
+thiserror = "2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_LibraryLoader"] }

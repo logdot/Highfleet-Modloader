@@ -5,7 +5,7 @@ edition = "2021"
 # build = "build.rs"
 
 [workspace]
-members = ["crates/highfleet-mod-api"]
+members = ["crates/highfleet-mod-api", "crates/highfleet-patchy-client", "tests/fixtures/patchy-mod"]
 resolver = "2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -16,6 +16,7 @@ libc = "0.2.149"
 libloading = "0.8"
 log = "0.4.*"
 highfleet-mod-api = { path = "crates/highfleet-mod-api" }
+patchy = { package = "patchy-rs", git = "https://github.com/logdot/patchy-rs.git", rev = "64d2eac7b33f81c4a60f18ae834d9daba96b92cf" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10.*"
