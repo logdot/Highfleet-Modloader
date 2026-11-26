@@ -128,7 +128,7 @@ fn custom_detour_sends_replay_and_resume_as_fixups() {
     let (calls, host) = mock();
     let mut session = PatchSession::from_host(host).unwrap();
     let patch = unsafe {
-        session.detour_trampoline_with(0x1000, 5, |site| {
+        session.detour_trampoline(0x1000, 5, |site| {
             let mut code = Trampoline::new();
             site.replay_verbatim(&mut code);
             site.resume(&mut code);

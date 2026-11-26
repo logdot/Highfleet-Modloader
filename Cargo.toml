@@ -16,7 +16,7 @@ libc = "0.2.149"
 libloading = "0.8"
 log = "0.4.*"
 highfleet-mod-api = { path = "crates/highfleet-mod-api" }
-patchy = { package = "patchy-rs", git = "https://github.com/logdot/patchy-rs.git", rev = "84993c490f7db47e915d7e0b4270eb3f36f614de" }
+patchy = { package = "patchy-rs", git = "https://github.com/logdot/patchy-rs.git", rev = "19e4f77b8987329fc46cfe6c886f11e4e67528a6" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sha2 = "0.10.*"
