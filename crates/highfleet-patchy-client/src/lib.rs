@@ -1,13 +1,16 @@
-//! Rust client for the Modloader's provisional, overwrite-only Patchy service.
+//! Rust client for the Modloader's provisional shared Patchy service.
 //!
 //! Alias this package as `patchy` in the mod's manifest and invoke
 //! [`export_patchy!`] once. This crate never links the local patch engine.
 
 use highfleet_mod_api::patching::{
-    HfmPatchApiV1, HfmPatchSessionCreateV1, HfmPatchSessionDiscardV1, HfmPatchSessionId,
-    HfmPatchSessionInstallV1, HfmPatchSessionOverwriteV1, HFM_PATCH_ABI_VERSION_1,
-    HFM_PATCH_FAILED, HFM_PATCH_INVALID_ARGUMENT, HFM_PATCH_OK, HFM_PATCH_OVERLAP,
-    HFM_PATCH_SOURCE_CHANGED,
+    HfmCallBridgeV1, HfmPatchApiV1, HfmPatchApiWithCallV1, HfmPatchSessionCreateV1,
+    HfmPatchSessionDiscardV1, HfmPatchSessionId, HfmPatchSessionInstallV1,
+    HfmPatchSessionOverwriteV1, HfmPatchSessionPatchCallV1, HFM_PATCH_ABI_VERSION_1,
+    HFM_PATCH_FAILED, HFM_PATCH_FLAGS_KEEP_PRODUCED, HFM_PATCH_FLAGS_PRESERVE,
+    HFM_PATCH_INVALID_ARGUMENT, HFM_PATCH_OK, HFM_PATCH_OVERLAP, HFM_PATCH_RETURN_NEITHER,
+    HFM_PATCH_RETURN_RAX, HFM_PATCH_RETURN_XMM0, HFM_PATCH_SOURCE_CHANGED,
+    HFM_PATCH_STACK_ALIGNED_16, HFM_PATCH_STACK_OFFSET_8,
 };
 use std::{ffi::c_void, mem::size_of, num::NonZeroU64, sync::OnceLock};
 
@@ -30,6 +33,8 @@ pub enum PatchError {
     MissingCallback(&'static str),
     #[error("the Modloader returned an invalid Patchy session ID")]
     InvalidSession,
+    #[error("the Modloader did not return a trampoline address for the staged callback")]
+    MissingTrampoline,
     #[error("the Modloader rejected invalid Patchy arguments")]
     InvalidArgument,
     #[error("a patch overlaps another patch; see the Modloader log")]
@@ -47,6 +52,7 @@ struct Host {
     discard: HfmPatchSessionDiscardV1,
     overwrite: HfmPatchSessionOverwriteV1,
     install: HfmPatchSessionInstallV1,
+    patch_call: Option<HfmPatchSessionPatchCallV1>,
 }
 
 // SAFETY: The host ABI keeps the opaque context and callbacks live for the
@@ -59,7 +65,8 @@ impl Host {
     /// A non-null pointer must provide two readable, aligned `u32` fields.
     /// If they report a supported version and sufficient size, the pointer
     /// must be aligned and valid for a full `HfmPatchApiV1`, and its context
-    /// and callbacks must satisfy the host ABI for process lifetime.
+    /// and callbacks must satisfy the host ABI for process lifetime. A table
+    /// advertising the callback extension must also be valid for that prefix.
     unsafe fn from_table(table: *const HfmPatchApiV1) -> Result<Self> {
         if table.is_null() {
             return Err(PatchError::NullTable);
@@ -77,6 +84,12 @@ impl Host {
         if api.context.is_null() {
             return Err(PatchError::MissingContext);
         }
+        let patch_call = if size >= size_of::<HfmPatchApiWithCallV1>() as u32 {
+            let extended = table.cast::<HfmPatchApiWithCallV1>();
+            unsafe { (&raw const (*extended).session_patch_call).read() }
+        } else {
+            None
+        };
         Ok(Self {
             context: api.context,
             create: api
@@ -91,6 +104,7 @@ impl Host {
             install: api
                 .session_install
                 .ok_or(PatchError::MissingCallback("session_install"))?,
+            patch_call,
         })
     }
 }
@@ -142,6 +156,69 @@ fn check_status(status: u32) -> Result {
         HFM_PATCH_OVERLAP => Err(PatchError::Overlap),
         HFM_PATCH_SOURCE_CHANGED => Err(PatchError::SourceChanged),
         other => Err(PatchError::HostFailure(other)),
+    }
+}
+
+/// Stack alignment when execution enters the call bridge.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StackAlignment {
+    /// `RSP % 16 == 0`.
+    Aligned16,
+    /// `RSP % 16 == 8`.
+    Offset8,
+}
+
+/// Which flags the bridge leaves after the call.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FlagPolicy {
+    /// Restore the incoming flags.
+    Preserve,
+    /// Leave the flags produced by the callback or `after_call`.
+    KeepProduced,
+}
+
+/// Which callback return register the bridge leaves unrestored.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KeepReturn {
+    /// Restore both RAX and XMM0.
+    Neither,
+    /// Keep the callback's result in RAX.
+    Rax,
+    /// Keep the callback's result in XMM0.
+    Xmm0,
+}
+
+/// Describes a callback invocation. The loader emits the actual bridge.
+#[derive(Clone, Copy, Debug)]
+pub struct CallBridge<'a> {
+    pub callback: *const (),
+    pub incoming_stack: StackAlignment,
+    pub flags: FlagPolicy,
+    pub keep_return: KeepReturn,
+    pub before_call: &'a [u8],
+    pub after_call: &'a [u8],
+}
+
+impl CallBridge<'_> {
+    fn request(&self) -> HfmCallBridgeV1 {
+        HfmCallBridgeV1 {
+            callback: self.callback as usize,
+            stack_alignment: match self.incoming_stack {
+                StackAlignment::Aligned16 => HFM_PATCH_STACK_ALIGNED_16,
+                StackAlignment::Offset8 => HFM_PATCH_STACK_OFFSET_8,
+            },
+            flags: match self.flags {
+                FlagPolicy::Preserve => HFM_PATCH_FLAGS_PRESERVE,
+                FlagPolicy::KeepProduced => HFM_PATCH_FLAGS_KEEP_PRODUCED,
+            },
+            keep_return: match self.keep_return {
+                KeepReturn::Neither => HFM_PATCH_RETURN_NEITHER,
+                KeepReturn::Rax => HFM_PATCH_RETURN_RAX,
+                KeepReturn::Xmm0 => HFM_PATCH_RETURN_XMM0,
+            },
+            before_call: self.before_call.into(),
+            after_call: self.after_call.into(),
+        }
     }
 }
 
@@ -206,6 +283,49 @@ impl PatchSession {
         Ok(Patch { trampoline: None })
     }
 
+    /// Stages a callback followed by a jump to `address + size`, without
+    /// replaying the replaced instructions.
+    ///
+    /// # Safety
+    /// The span must stay readable through install, contain whole instructions,
+    /// and have no incoming jumps into its interior. The callback must use the
+    /// Windows x64 ABI without stack-passed arguments, must not unwind out of
+    /// the bridge, and must stay live for the process if installed. The
+    /// declared alignment must match RSP at the site, and the direction flag
+    /// must be clear. Both snippets must be position-independent, straight-line
+    /// code that falls through without changing RSP or the bridge's saved
+    /// state and is valid for the machine state in which it runs.
+    pub unsafe fn patch_call(
+        &mut self,
+        address: usize,
+        size: usize,
+        bridge: CallBridge<'_>,
+    ) -> Result<Patch> {
+        let patch_call = self
+            .host
+            .patch_call
+            .ok_or(PatchError::MissingCallback("session_patch_call"))?;
+        let id = self.id.expect("live session").get();
+        let mut output = 0;
+        check_status(unsafe {
+            patch_call(
+                self.host.context,
+                id,
+                "patch_call".into(),
+                address,
+                size,
+                &bridge.request(),
+                &mut output,
+            )
+        })?;
+        let trampoline = (output != 0)
+            .then_some(output)
+            .ok_or(PatchError::MissingTrampoline)?;
+        Ok(Patch {
+            trampoline: Some(trampoline),
+        })
+    }
+
     /// Installs every staged patch. The host consumes the session even on error.
     ///
     /// # Safety
@@ -233,6 +353,8 @@ pub struct Patch {
 
 impl Patch {
     /// Returns the trampoline address if the patch has one.
+    ///
+    /// Do not use the address unless and until session installation succeeds.
     pub fn trampoline_address(&self) -> Option<usize> {
         self.trampoline
     }

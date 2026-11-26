@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicU32, Ordering::Relaxed};
 #[derive(Default)]
 struct Calls {
     stage_count: AtomicU32,
+    patch_call_count: AtomicU32,
     install_count: AtomicU32,
     discard_count: AtomicU32,
     install_status: AtomicU32,
@@ -67,9 +68,49 @@ unsafe extern "C" fn install(context: *mut c_void, id: HfmPatchSessionId) -> u32
     calls.install_status.load(Relaxed)
 }
 
+extern "C" fn callback() {}
+
+unsafe extern "C" fn patch_call(
+    context: *mut c_void,
+    id: HfmPatchSessionId,
+    name: HfmStr,
+    address: usize,
+    size: usize,
+    bridge: *const HfmCallBridgeV1,
+    output: *mut usize,
+) -> u32 {
+    let bridge = unsafe { &*bridge };
+    if id != 12
+        || address != 0x1000
+        || size != 5
+        || unsafe { std::slice::from_raw_parts(name.ptr, name.len) } != b"patch_call"
+        || bridge.callback != callback as *const () as usize
+        || bridge.stack_alignment != HFM_PATCH_STACK_OFFSET_8
+        || bridge.flags != HFM_PATCH_FLAGS_KEEP_PRODUCED
+        || bridge.keep_return != HFM_PATCH_RETURN_RAX
+        || bridge.before_call.len != 1
+        || unsafe { bridge.before_call.ptr.read() } != 0x90
+        || bridge.after_call.len != 0
+    {
+        return HFM_PATCH_INVALID_ARGUMENT;
+    }
+    unsafe { &*context.cast::<Calls>() }
+        .patch_call_count
+        .fetch_add(1, Relaxed);
+    unsafe { output.write(0x2000) };
+    HFM_PATCH_OK
+}
+
 fn mock() -> (&'static Calls, Host) {
     let calls = Box::leak(Box::new(Calls::default()));
-    let host = unsafe { Host::from_table(&table(calls)) }.unwrap();
+    let api = HfmPatchApiWithCallV1 {
+        base: HfmPatchApiV1 {
+            struct_size: size_of::<HfmPatchApiWithCallV1>() as u32,
+            ..table(calls)
+        },
+        session_patch_call: Some(patch_call),
+    };
+    let host = unsafe { Host::from_table(std::ptr::from_ref(&api).cast()) }.unwrap();
     (calls, host)
 }
 
@@ -134,6 +175,39 @@ fn overwrite_forwards_the_request_to_its_host() {
 
     assert_eq!(calls.stage_count.load(Relaxed), 1);
     assert_eq!(patch.trampoline_address(), None);
+}
+
+#[test]
+fn patch_call_forwards_bridge_options_and_returns_the_trampoline_address() {
+    let (calls, host) = mock();
+    let mut session = PatchSession::from_host(host).unwrap();
+    let patch = unsafe {
+        session.patch_call(
+            0x1000,
+            5,
+            CallBridge {
+                callback: callback as *const (),
+                incoming_stack: StackAlignment::Offset8,
+                flags: FlagPolicy::KeepProduced,
+                keep_return: KeepReturn::Rax,
+                before_call: &[0x90],
+                after_call: &[],
+            },
+        )
+    }
+    .unwrap();
+    assert_eq!(patch.trampoline_address(), Some(0x2000));
+    assert_eq!(calls.patch_call_count.load(Relaxed), 1);
+}
+
+#[test]
+fn an_overwrite_only_table_can_still_create_a_session() {
+    let calls = Box::leak(Box::new(Calls::default()));
+    let host = unsafe { Host::from_table(&table(calls)) }.unwrap();
+    let session = PatchSession::from_host(host).unwrap();
+    assert!(session.host.patch_call.is_none());
+    drop(session);
+    assert_eq!(calls.discard_count.load(Relaxed), 1);
 }
 
 #[test]

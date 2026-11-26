@@ -115,15 +115,16 @@ normally. Unknown builds and rejected version checks do not disable the service.
 Sessions are referred to by loader-issued 64-bit IDs. Zero is never issued, IDs
 are never reused, and an unknown, consumed, or another mod's ID is rejected
 without affecting any session. The ABI is provisional and currently supports
-byte overwrites only.
+byte overwrites and callback-only detours.
 
 Rust mods can alias the `highfleet-patchy-client` package as `patchy` in their
 manifest and call `patchy::export_patchy!()` once at the crate root.
 `PatchSession::new()` then returns a loader-owned session or an error if the
-service was unavailable or incompatible. `overwrite` and `install_permanently`
-use the usual Patchy call shape, and `overwrite_named` supplies a diagnostic
-name. There is no local Patchy fallback. Custom trampolines are not supported
-yet. See the [test mod](tests/fixtures/patchy-mod/src/lib.rs) for a minimal example.
+service was unavailable or incompatible. `overwrite`, `patch_call`, and
+`install_permanently` use the usual Patchy call shape. `overwrite_named`
+supplies a diagnostic name. There is no local Patchy fallback. Custom
+trampolines and replay are not supported yet. See the
+[test mod](tests/fixtures/patchy-mod/src/lib.rs) for a minimal example.
 
 #### `init() -> bool`
 The modloader calls this function last.

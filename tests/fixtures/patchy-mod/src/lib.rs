@@ -9,6 +9,42 @@ patchy::export_patchy!();
 static mut TARGET: u8 = 7;
 static SAW_UNKNOWN_AFTER_SETUP: AtomicBool = AtomicBool::new(false);
 
+#[cfg(all(windows, target_arch = "x86_64"))]
+#[unsafe(naked)]
+#[unsafe(no_mangle)]
+pub extern "C" fn patchy_test_callback_result() -> u32 {
+    // First instruction: MOV EAX, 7 (five bytes). Continuation: ADD EAX, 1.
+    core::arch::naked_asm!(".byte 0xb8, 7, 0, 0, 0", "add eax, 1", "ret");
+}
+
+#[cfg(all(windows, target_arch = "x86_64"))]
+fn stage_callback(session: &mut PatchSession) -> patchy::Result {
+    use patchy::{CallBridge, FlagPolicy, KeepReturn, StackAlignment};
+
+    extern "C" fn replacement() -> u32 {
+        40
+    }
+
+    // SAFETY: The fixture owns the naked function, whose entry has RSP % 16
+    // == 8. Its first instruction is exactly five bytes and the callback
+    // supplies the EAX value required by the continuation.
+    unsafe {
+        session.patch_call(
+            patchy_test_callback_result as *const () as usize,
+            5,
+            CallBridge {
+                callback: replacement as *const (),
+                incoming_stack: StackAlignment::Offset8,
+                flags: FlagPolicy::Preserve,
+                keep_return: KeepReturn::Rax,
+                before_call: &[],
+                after_call: &[],
+            },
+        )?;
+    }
+    Ok(())
+}
+
 /// Declines every version to show that a rejected version keeps the service.
 #[unsafe(no_mangle)]
 unsafe extern "C" fn version(version: *const c_char) -> bool {
@@ -28,6 +64,10 @@ unsafe extern "C" fn init() -> bool {
     let Ok(mut session) = PatchSession::new() else {
         return false;
     };
+    #[cfg(all(windows, target_arch = "x86_64"))]
+    if stage_callback(&mut session).is_err() {
+        return false;
+    }
     // SAFETY: TARGET stays live and only this fixture touches it during init.
     unsafe {
         session

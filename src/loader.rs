@@ -117,11 +117,19 @@ mod tests {
             let target = library
                 .get::<unsafe extern "C" fn() -> u8>(b"patchy_test_target")
                 .unwrap();
+            let callback_result = library
+                .get::<unsafe extern "C" fn() -> u32>(b"patchy_test_callback_result")
+                .unwrap();
             let version = startup_version();
-            assert_eq!(version, UNKNOWN_VERSION, "the test runner is not a known game build");
+            assert_eq!(
+                version, UNKNOWN_VERSION,
+                "the test runner is not a known game build"
+            );
             assert_eq!(target(), 7);
+            assert_eq!(callback_result(), 8);
             super::load_mod(&path, &version);
             assert_eq!(target(), 42);
+            assert_eq!(callback_result(), 41);
         }
     }
 }
