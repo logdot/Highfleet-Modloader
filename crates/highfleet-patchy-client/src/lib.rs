@@ -4,15 +4,11 @@
 //! [`export_patchy!`] once. This crate never links the local patch engine.
 
 use highfleet_mod_api::patching::{
-    HfmCallBridgeV1, HfmPatchApiV1, HfmPatchApiWithCallV1, HfmPatchApiWithDetourV1,
-    HfmPatchSessionCreateV1, HfmPatchSessionDetourV1, HfmPatchSessionDiscardV1, HfmPatchSessionId,
-    HfmPatchSessionInstallV1, HfmPatchSessionOverwriteV1, HfmPatchSessionPatchCallV1,
-    HfmTrampolineFixupV1, HfmTrampolinePlanV1, HFM_PATCH_ABI_VERSION_1, HFM_PATCH_FAILED,
-    HFM_PATCH_FIXUP_RELATIVE, HFM_PATCH_FIXUP_REPLAY, HFM_PATCH_FIXUP_RESUME,
-    HFM_PATCH_FLAGS_KEEP_PRODUCED, HFM_PATCH_FLAGS_PRESERVE, HFM_PATCH_INVALID_ARGUMENT,
-    HFM_PATCH_OK, HFM_PATCH_OVERLAP, HFM_PATCH_RETURN_NEITHER, HFM_PATCH_RETURN_RAX,
-    HFM_PATCH_RETURN_XMM0, HFM_PATCH_SOURCE_CHANGED, HFM_PATCH_STACK_ALIGNED_16,
-    HFM_PATCH_STACK_OFFSET_8,
+    HfmPatchApiV1, HfmPatchSessionCreateV1, HfmPatchSessionDetourV1, HfmPatchSessionDiscardV1,
+    HfmPatchSessionId, HfmPatchSessionInstallV1, HfmPatchSessionOverwriteV1, HfmTrampolineFixupV1,
+    HfmTrampolinePlanV1, HFM_PATCH_ABI_VERSION_1, HFM_PATCH_FAILED, HFM_PATCH_FIXUP_RELATIVE,
+    HFM_PATCH_FIXUP_REPLAY, HFM_PATCH_FIXUP_RESUME, HFM_PATCH_INVALID_ARGUMENT, HFM_PATCH_OK,
+    HFM_PATCH_OVERLAP, HFM_PATCH_SOURCE_CHANGED,
 };
 pub use patchy_code::{
     CallBridge, Condition, DetourSite, FlagPolicy, KeepReturn, Label, ReturnType, StackAlignment,
@@ -70,8 +66,7 @@ struct Host {
     discard: HfmPatchSessionDiscardV1,
     overwrite: HfmPatchSessionOverwriteV1,
     install: HfmPatchSessionInstallV1,
-    patch_call: Option<HfmPatchSessionPatchCallV1>,
-    detour: Option<HfmPatchSessionDetourV1>,
+    detour: HfmPatchSessionDetourV1,
 }
 
 // SAFETY: The host ABI keeps the opaque context and callbacks live for the
@@ -84,8 +79,7 @@ impl Host {
     /// A non-null pointer must provide two readable, aligned `u32` fields.
     /// If they report a supported version and sufficient size, the pointer
     /// must be aligned and valid for a full `HfmPatchApiV1`, and its context
-    /// and callbacks must satisfy the host ABI for process lifetime. A table
-    /// advertising an extension must also be valid for that prefix.
+    /// and callbacks must satisfy the host ABI for process lifetime.
     unsafe fn from_table(table: *const HfmPatchApiV1) -> Result<Self> {
         if table.is_null() {
             return Err(PatchError::NullTable);
@@ -103,18 +97,6 @@ impl Host {
         if api.context.is_null() {
             return Err(PatchError::MissingContext);
         }
-        let patch_call = if size >= size_of::<HfmPatchApiWithCallV1>() as u32 {
-            let extended = table.cast::<HfmPatchApiWithCallV1>();
-            unsafe { (&raw const (*extended).session_patch_call).read() }
-        } else {
-            None
-        };
-        let detour = if size >= size_of::<HfmPatchApiWithDetourV1>() as u32 {
-            let extended = table.cast::<HfmPatchApiWithDetourV1>();
-            unsafe { (&raw const (*extended).session_detour).read() }
-        } else {
-            None
-        };
         Ok(Self {
             context: api.context,
             create: api
@@ -129,8 +111,9 @@ impl Host {
             install: api
                 .session_install
                 .ok_or(PatchError::MissingCallback("session_install"))?,
-            patch_call,
-            detour,
+            detour: api
+                .session_detour
+                .ok_or(PatchError::MissingCallback("session_detour"))?,
         })
     }
 }
@@ -182,27 +165,6 @@ fn check_status(status: u32) -> Result {
         HFM_PATCH_OVERLAP => Err(PatchError::Overlap),
         HFM_PATCH_SOURCE_CHANGED => Err(PatchError::SourceChanged),
         other => Err(PatchError::HostFailure(other)),
-    }
-}
-
-fn bridge_request(bridge: CallBridge<'_>) -> HfmCallBridgeV1 {
-    HfmCallBridgeV1 {
-        callback: bridge.callback as usize,
-        stack_alignment: match bridge.incoming_stack {
-            StackAlignment::Aligned16 => HFM_PATCH_STACK_ALIGNED_16,
-            StackAlignment::Offset8 => HFM_PATCH_STACK_OFFSET_8,
-        },
-        flags: match bridge.flags {
-            FlagPolicy::Preserve => HFM_PATCH_FLAGS_PRESERVE,
-            FlagPolicy::KeepProduced => HFM_PATCH_FLAGS_KEEP_PRODUCED,
-        },
-        keep_return: match bridge.keep_return {
-            KeepReturn::Neither => HFM_PATCH_RETURN_NEITHER,
-            KeepReturn::Rax => HFM_PATCH_RETURN_RAX,
-            KeepReturn::Xmm0 => HFM_PATCH_RETURN_XMM0,
-        },
-        before_call: bridge.before_call.into(),
-        after_call: bridge.after_call.into(),
     }
 }
 
@@ -308,24 +270,17 @@ impl PatchSession {
         size: usize,
         bridge: CallBridge<'_>,
     ) -> Result<Patch> {
-        let patch_call = self
-            .host
-            .patch_call
-            .ok_or(PatchError::MissingCallback("session_patch_call"))?;
-        let id = self.id.expect("live session").get();
-        let mut output = 0;
-        check_status(unsafe {
-            patch_call(
-                self.host.context,
-                id,
-                "patch_call".into(),
-                address,
-                size,
-                &bridge_request(bridge),
-                &mut output,
-            )
-        })?;
-        Patch::from_trampoline(output)
+        if bridge.callback.is_null() {
+            return Err(PatchError::InvalidArgument);
+        }
+        unsafe {
+            self.stage_detour("patch_call", address, size, |site| {
+                let mut code = Trampoline::new();
+                code.call(bridge);
+                site.resume(&mut code);
+                Ok(code)
+            })
+        }
     }
 
     /// Stages an already built custom trampoline.
@@ -360,10 +315,16 @@ impl PatchSession {
     where
         F: FnOnce(DetourSite) -> Result<Trampoline>,
     {
-        let detour = self
-            .host
-            .detour
-            .ok_or(PatchError::MissingCallback("session_detour"))?;
+        unsafe { self.stage_detour("detour", address, size, build) }
+    }
+
+    unsafe fn stage_detour(
+        &mut self,
+        name: &str,
+        address: usize,
+        size: usize,
+        build: impl FnOnce(DetourSite) -> Result<Trampoline>,
+    ) -> Result<Patch> {
         if address == 0 || size < 5 || address.checked_add(size).is_none() {
             return Err(PatchError::InvalidArgument);
         }
@@ -377,10 +338,10 @@ impl PatchSession {
         let id = self.id.expect("live session").get();
         let mut output = 0;
         check_status(unsafe {
-            detour(
+            (self.host.detour)(
                 self.host.context,
                 id,
-                "detour".into(),
+                name.into(),
                 address,
                 size,
                 &request,
